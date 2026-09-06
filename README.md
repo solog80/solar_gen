@@ -109,28 +109,26 @@ Open **[http://localhost:8085](http://localhost:8085)** in your browser. Default
 
 ---
 
-## 🔒 Cloudflare Zero Trust Tunnel Setup for QNAP NAS (Without Tailscale)
+## 🔒 Cloudflare Zero Trust Tunnel Setup for QNAP NAS (`solar-analytics.solofx.net`)
 
-If you launch or deploy the dashboard backend outside your local network without Tailscale running, you can connect securely to your QNAP NAS TimescaleDB instance (`192.168.0.112:55439`) via a **Cloudflare Zero Trust Tunnel**.
+If you launch or deploy the dashboard backend outside your local network without Tailscale running, you can connect securely to your QNAP NAS TimescaleDB instance (`192.168.0.112:55439`) via your Cloudflare Zero Trust Tunnel at **`solar-analytics.solofx.net`**.
 
-### Step 1: Configure Ingress Rule on QNAP Cloudflare Tunnel
-In your **Cloudflare Zero Trust Dashboard** (`Access` -> `Tunnels` -> Select your existing QNAP NAS Tunnel at `192.168.0.112`):
-1. Click **Add Public Hostname**:
-   * **Public Hostname:** `timescale.yourdomain.com` (or `solar-db.yourdomain.com`)
-   * **Service Type:** `TCP`
-   * **URL:** `192.168.0.112:55439` (or `localhost:55439` if container uses host networking)
-2. Save the Ingress Rule.
+### Step 1: Tunnel Ingress Configuration
+Your tunnel route points to your QNAP NAS TimescaleDB:
+* **Public Hostname:** `solar-analytics.solofx.net`
+* **Service Type:** `TCP`
+* **Target URL:** `192.168.0.112:55439` (or `localhost:55439` if container uses host network mode)
 
 ### Step 2: Establish Client TCP Tunnel Proxy (On machine running Go Backend)
 Because Postgres raw TCP traffic is encapsulated over WebSockets by Cloudflare Zero Trust, launch a local client TCP proxy using `cloudflared`:
 ```bash
-cloudflared access tcp --hostname timescale.yourdomain.com --url localhost:55439
+cloudflared access tcp --hostname solar-analytics.solofx.net --url localhost:55439
 ```
 
 ### Step 3: Update `.env` Connection URL
 Set `TIMESCALE_URL` in `.env` depending on your connection method:
 
-* **Via Cloudflare Zero Trust TCP Tunnel (Remote / Cloud / Without Tailscale):**
+* **Via Cloudflare Zero Trust TCP Tunnel Proxy (Remote / Cloud / Without Tailscale):**
   ```env
   TIMESCALE_URL=postgres://postgres:becd1f3c85c65c97f57c8a4ee2c96c6c00266a19@localhost:55439/analytics?sslmode=disable
   ```
