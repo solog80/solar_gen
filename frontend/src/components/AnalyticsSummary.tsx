@@ -60,51 +60,51 @@ export const AnalyticsSummary: React.FC<AnalyticsSummaryProps> = ({
   const titlePrefix = deviceName ? `${deviceName} ` : '';
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-3 sm:space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
             <Coins className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-gray-100 flex items-center gap-2">
+            <h2 className="text-base sm:text-lg font-bold text-gray-100 flex items-center gap-2">
               <span>{titlePrefix}QNAP TimescaleDB Savings Analytics</span>
             </h2>
-            <p className="text-xs text-gray-400">
-              1-Year Timeseries Energy Accumulation & Cost Savings Engine (Click any card to view breakdown)
+            <p className="text-[11px] sm:text-xs text-gray-400">
+              1-Year Timeseries Energy Accumulation & Cost Savings Engine
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setIsBreakdownOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-semibold transition"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-semibold transition"
           >
             <BarChart3 className="w-3.5 h-3.5" />
-            <span>Daily / Weekly / Monthly Breakdown</span>
+            <span>Breakdown & Dates</span>
           </button>
 
           <button
             onClick={() => handleTriggerBackfill(90)}
             disabled={isBackfilling}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 text-xs font-semibold transition disabled:opacity-50"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 text-xs font-semibold transition disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isBackfilling ? 'animate-spin' : ''}`} />
-            <span>{isBackfilling ? 'Backfilling...' : 'Sync Past 90 Days'}</span>
+            <span>{isBackfilling ? 'Backfilling...' : 'Sync 90 Days'}</span>
           </button>
         </div>
       </div>
 
       {backfillMsg && (
         <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>{backfillMsg}</span>
         </div>
       )}
 
       {/* Grid of 4 Analytics Cards - Clickable to open breakdown */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         
         {/* Card 1: Total Financial Savings */}
         <div

@@ -53,25 +53,25 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry }) => {
   };
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
       
       {/* Solar Card */}
-      <div className="glass-card p-6 flex flex-col justify-between gap-4 transition hover:-translate-y-1 hover:border-white/20">
+      <div className="glass-card p-4 sm:p-6 flex flex-col justify-between gap-3 sm:gap-4 transition hover:-translate-y-1 hover:border-white/20">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center">
-            <Sun className="w-6 h-6" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center shrink-0">
+            <Sun className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <span className="block text-sm font-semibold text-gray-200">Total Solar Generation</span>
-            <span className="text-xs text-gray-400">Combined Array Yield</span>
+            <span className="block text-xs sm:text-sm font-semibold text-gray-200">Total Solar Generation</span>
+            <span className="text-[10px] sm:text-xs text-gray-400">Combined Array Yield</span>
           </div>
         </div>
 
-        <div className="font-mono text-3xl font-bold text-amber-400 drop-shadow-[0_0_12px_rgba(245,158,11,0.3)]">
-          {pvPower.toLocaleString()} <span className="text-sm font-sans font-normal text-gray-400">W</span>
+        <div className="font-mono text-2xl sm:text-3xl font-bold text-amber-400 drop-shadow-[0_0_12px_rgba(245,158,11,0.3)]">
+          {pvPower.toLocaleString()} <span className="text-xs sm:text-sm font-sans font-normal text-gray-400">W</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 pt-3 border-t border-white/5 text-xs">
+        <div className="grid grid-cols-2 gap-2 pt-2.5 sm:pt-3 border-t border-white/5 text-xs">
           <div>
             <span className="block text-[10px] text-gray-400 uppercase tracking-wider">Voltage</span>
             <span className="font-mono font-semibold">{pvVoltage} V</span>
@@ -84,99 +84,91 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry }) => {
       </div>
 
       {/* Battery Card */}
-      <div className="glass-card p-6 flex flex-col justify-between gap-4 transition hover:-translate-y-1 hover:border-white/20">
+      <div className="glass-card p-4 sm:p-6 flex flex-col justify-between gap-3 sm:gap-4 transition hover:-translate-y-1 hover:border-white/20">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center">
-            <Battery className="w-6 h-6" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center shrink-0">
+            <Battery className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <span className="block text-sm font-semibold text-gray-200">Battery Storage</span>
-            <span className="text-xs text-emerald-400 font-semibold">{batteryStatus}</span>
+            <span className="block text-xs sm:text-sm font-semibold text-gray-200">Battery Storage</span>
+            <span className="text-[10px] sm:text-xs text-gray-400">SOC & Energy Balance</span>
           </div>
         </div>
 
         <div>
-          <div className="flex items-baseline justify-between">
-            <div className="font-mono text-3xl font-bold text-emerald-400 drop-shadow-[0_0_12px_rgba(16,185,129,0.3)]">
-              {batterySoc} <span className="text-sm font-sans font-normal text-gray-400">%</span>
-            </div>
-            <span className="text-xs font-mono font-bold text-emerald-300">
-              {batteryPower !== 0 ? `${Math.abs(batteryPower)} W` : 'Active'}
+          <div className="font-mono text-2xl sm:text-3xl font-bold text-emerald-400 drop-shadow-[0_0_12px_rgba(16,185,129,0.3)] flex items-baseline justify-between">
+            <span>{batterySoc}%</span>
+            <span className="text-xs font-sans font-medium text-gray-300">
+              {batteryPower !== 0 ? `${Math.abs(batteryPower)} W` : '0 W'}
             </span>
           </div>
-
-          {/* LED Dots Bar */}
           {renderLedDots(batterySoc)}
         </div>
 
-        <div className="grid grid-cols-3 gap-1 pt-3 border-t border-white/5 text-xs">
+        <div className="grid grid-cols-2 gap-2 pt-2.5 sm:pt-3 border-t border-white/5 text-xs">
           <div>
-            <span className="block text-[9px] text-gray-400 uppercase tracking-wider">Power</span>
-            <span className="font-mono font-semibold">{batteryPower} W</span>
+            <span className="block text-[10px] text-gray-400 uppercase tracking-wider">Status / Current</span>
+            <span className="font-mono font-semibold text-emerald-300">{batteryStatus} ({batteryAmps}A)</span>
           </div>
           <div>
-            <span className="block text-[9px] text-gray-400 uppercase tracking-wider">Voltage</span>
-            <span className="font-mono font-semibold">{batteryVoltage} V</span>
-          </div>
-          <div>
-            <span className="block text-[9px] text-gray-400 uppercase tracking-wider">Current</span>
-            <span className="font-mono font-bold text-emerald-300">{batteryAmps} A</span>
+            <span className="block text-[10px] text-gray-400 uppercase tracking-wider">Voltage</span>
+            <span className="font-mono font-semibold text-gray-300">{batteryVoltage} V</span>
           </div>
         </div>
       </div>
 
-      {/* Load Card */}
-      <div className="glass-card p-6 flex flex-col justify-between gap-4 transition hover:-translate-y-1 hover:border-white/20">
+      {/* House Load Card */}
+      <div className="glass-card p-4 sm:p-6 flex flex-col justify-between gap-3 sm:gap-4 transition hover:-translate-y-1 hover:border-white/20">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center">
-            <Zap className="w-6 h-6" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-500/15 text-blue-500 flex items-center justify-center shrink-0">
+            <Zap className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <span className="block text-sm font-semibold text-gray-200">Total Consumption</span>
-            <span className="text-xs text-gray-400">Combined AC Load</span>
+            <span className="block text-xs sm:text-sm font-semibold text-gray-200">House Consumption</span>
+            <span className="text-[10px] sm:text-xs text-gray-400">Total AC Load Output</span>
           </div>
         </div>
 
-        <div className="font-mono text-3xl font-bold text-cyan-400 drop-shadow-[0_0_12px_rgba(6,182,212,0.3)]">
-          {loadPower.toLocaleString()} <span className="text-sm font-sans font-normal text-gray-400">W</span>
+        <div className="font-mono text-2xl sm:text-3xl font-bold text-blue-400 drop-shadow-[0_0_12px_rgba(59,130,246,0.3)]">
+          {loadPower.toLocaleString()} <span className="text-xs sm:text-sm font-sans font-normal text-gray-400">W</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 pt-3 border-t border-white/5 text-xs">
+        <div className="grid grid-cols-2 gap-2 pt-2.5 sm:pt-3 border-t border-white/5 text-xs">
           <div>
-            <span className="block text-[10px] text-gray-400 uppercase tracking-wider">AC Voltage</span>
+            <span className="block text-[10px] text-gray-400 uppercase tracking-wider">Voltage</span>
             <span className="font-mono font-semibold">{loadVoltage} V</span>
           </div>
           <div>
             <span className="block text-[10px] text-gray-400 uppercase tracking-wider">Current (Amps)</span>
-            <span className="font-mono font-bold text-cyan-300">{loadAmps} A</span>
+            <span className="font-mono font-bold text-blue-300">{loadAmps} A</span>
           </div>
         </div>
       </div>
 
-      {/* Grid Status Card */}
-      <div className="glass-card p-6 flex flex-col justify-between gap-4 transition hover:-translate-y-1 hover:border-white/20">
+      {/* AC Grid Status Card */}
+      <div className="glass-card p-4 sm:p-6 flex flex-col justify-between gap-3 sm:gap-4 transition hover:-translate-y-1 hover:border-white/20">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center">
-            <Activity className="w-6 h-6" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0">
+            <Activity className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <span className="block text-sm font-semibold text-gray-200">Grid & System</span>
-            <span className="text-xs text-purple-400 font-semibold">Connected</span>
+            <span className="block text-xs sm:text-sm font-semibold text-gray-200">AC Utility Grid</span>
+            <span className="text-[10px] sm:text-xs text-gray-400">Grid Feed & Inverter Temp</span>
           </div>
         </div>
 
-        <div className="font-mono text-3xl font-bold text-purple-400 drop-shadow-[0_0_12px_rgba(139,92,246,0.3)]">
-          {gridPower} <span className="text-sm font-sans font-normal text-gray-400">W</span>
+        <div className="font-mono text-2xl sm:text-3xl font-bold text-purple-400 drop-shadow-[0_0_12px_rgba(168,85,247,0.3)]">
+          {gridPower.toLocaleString()} <span className="text-xs sm:text-sm font-sans font-normal text-gray-400">W</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 pt-3 border-t border-white/5 text-xs">
+        <div className="grid grid-cols-2 gap-2 pt-2.5 sm:pt-3 border-t border-white/5 text-xs">
           <div>
             <span className="block text-[10px] text-gray-400 uppercase tracking-wider">Grid Voltage</span>
             <span className="font-mono font-semibold">{gridVoltage} V</span>
           </div>
           <div>
-            <span className="block text-[10px] text-gray-400 uppercase tracking-wider">Max Temp</span>
-            <span className="font-mono font-semibold">{temp} °C</span>
+            <span className="block text-[10px] text-gray-400 uppercase tracking-wider">Inverter Temp</span>
+            <span className="font-mono font-semibold text-purple-300">{temp} °C</span>
           </div>
         </div>
       </div>

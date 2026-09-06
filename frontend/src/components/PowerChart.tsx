@@ -97,23 +97,23 @@ export const PowerChart: React.FC<PowerChartProps> = ({ history }) => {
   };
 
   return (
-    <div className="glass-card p-6 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="glass-card p-4 sm:p-6 space-y-3 sm:space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
         <div>
-          <h2 className="text-lg font-bold text-gray-100">Daily Power Generation vs Consumption</h2>
-          <p className="text-xs text-gray-400">24-Hour Solar Yield & AC Load Trend</p>
+          <h2 className="text-base sm:text-lg font-bold text-gray-100">Daily Power Generation vs Consumption</h2>
+          <p className="text-[11px] sm:text-xs text-gray-400">24-Hour Solar Yield & AC Load Trend</p>
         </div>
-        <div className="flex items-center gap-4 text-xs">
+        <div className="flex items-center gap-3 text-xs">
           <span className="flex items-center gap-1.5 text-gray-300">
-            <span className="w-3 h-3 rounded-sm bg-amber-500" /> Solar PV (W)
+            <span className="w-3 h-3 rounded-sm bg-amber-500 shrink-0" /> Solar PV (W)
           </span>
           <span className="flex items-center gap-1.5 text-gray-300">
-            <span className="w-3 h-3 rounded-sm bg-cyan-500" /> Load Usage (W)
+            <span className="w-3 h-3 rounded-sm bg-cyan-500 shrink-0" /> Load Usage (W)
           </span>
         </div>
       </div>
 
-      <div className="h-80 w-full">
+      <div className="h-60 sm:h-80 w-full">
         <Line data={data} options={options} />
       </div>
     </div>

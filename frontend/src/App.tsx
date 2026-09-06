@@ -108,7 +108,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
+    <div className="max-w-7xl mx-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
       <Header
         telemetry={telemetry}
         currentUser={currentUser}
@@ -131,10 +131,10 @@ export const App: React.FC = () => {
       />
 
       {/* Individual Devices Section */}
-      <section className="glass-card p-6 space-y-4">
+      <section className="glass-card p-4 sm:p-6 space-y-3 sm:space-y-4">
         <div>
-          <h2 className="text-lg font-bold text-gray-100">Plant Devices & IoT Modules</h2>
-          <p className="text-xs text-gray-400">Click any device card below to open its dedicated home page with time-series curves</p>
+          <h2 className="text-base sm:text-lg font-bold text-gray-100">Plant Devices & IoT Modules</h2>
+          <p className="text-[11px] sm:text-xs text-gray-400">Click any device card below to open its dedicated home page with time-series curves</p>
         </div>
 
         <DeviceGrid

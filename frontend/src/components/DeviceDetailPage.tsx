@@ -256,20 +256,20 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, onBa
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6 animate-in fade-in duration-300">
+    <div className="max-w-7xl mx-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
       
-      {/* Top Navigation & Breadcrumbs */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/10">
+      {/* Top Bar Navigation */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
         <div>
           <button
             onClick={onBack}
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-gray-200 text-xs font-semibold transition mb-3"
+            className="flex items-center gap-2 text-xs font-semibold text-blue-400 hover:text-blue-300 transition mb-2 group"
           >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Plant Overview
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition" />
+            <span>Back to All Locations</span>
           </button>
           
-          <div className="flex items-center gap-2 text-xs text-gray-400">
+          <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
             <span>{device.plant_name || 'Solo Solar Energy'}</span>
             <span>/</span>
             <span>Locations</span>
@@ -277,9 +277,9 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, onBa
             <span className="text-gray-200 font-semibold">{device.alias}</span>
           </div>
 
-          <h1 className="text-2xl font-bold text-gray-100 flex items-center gap-3 mt-1">
-            {device.alias}
-            <span className={`text-xs font-bold px-3 py-1 rounded-full border ${
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-100 flex items-center gap-2.5 flex-wrap mt-1">
+            <span>{device.alias}</span>
+            <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
               isBattery 
                 ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' 
                 : 'bg-amber-500/20 border-amber-500/40 text-amber-400'
@@ -289,19 +289,19 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, onBa
           </h1>
         </div>
 
-        <div className="flex items-center gap-3 text-xs">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-gray-300">
-            <MapPin className="w-3.5 h-3.5 text-blue-400" />
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/5 border border-white/10 text-gray-300">
+            <MapPin className="w-3.5 h-3.5 text-blue-400 shrink-0" />
             <span>{device.country || 'Uganda'}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-gray-300">
-            <Clock className="w-3.5 h-3.5 text-purple-400" />
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/5 border border-white/10 text-gray-300">
+            <Clock className="w-3.5 h-3.5 text-purple-400 shrink-0" />
             <span>{device.timezone || 'UTC+03:00'}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-semibold">
-            <ShieldCheck className="w-4 h-4" />
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-semibold">
+            <ShieldCheck className="w-4 h-4 shrink-0" />
             <span>Online</span>
           </div>
         </div>
@@ -316,7 +316,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, onBa
       />
 
       {/* KPI Cards for This Dedicated Location Home */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
         
         {/* Solar Output */}
         <div className="glass-card p-6 space-y-3">
