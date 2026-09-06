@@ -14,3 +14,4 @@ pkg/felicity/config.json
 
 # OS metadata
 .DS_Store
+.wrangler/
