@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"felicity_solar_dashboard/pkg/db"
@@ -20,17 +21,50 @@ const Port = 8085
 var client *felicity.Client
 var dbStore *db.Store
 
+func loadEnv(filename string) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			k := strings.TrimSpace(parts[0])
+			v := strings.TrimSpace(parts[1])
+			if (strings.HasPrefix(v, `"`) && strings.HasSuffix(v, `"`)) || (strings.HasPrefix(v, `'`) && strings.HasSuffix(v, `'`)) {
+				v = v[1 : len(v)-1]
+			}
+			if os.Getenv(k) == "" {
+				os.Setenv(k, v)
+			}
+		}
+	}
+}
+
 func main() {
+	loadEnv(".env")
+
 	execDir, _ := os.Getwd()
 	pkgDir := filepath.Join(execDir, "pkg", "felicity")
 
 	client = felicity.NewClient(pkgDir)
 
+	timescaleURL := os.Getenv("TIMESCALE_URL")
+	if timescaleURL == "" {
+		timescaleURL = "postgres://postgres:becd1f3c85c65c97f57c8a4ee2c96c6c00266a19@100.116.185.70:55439/analytics?sslmode=disable"
+	}
+
 	var err error
-	dbStore, err = db.NewStore("postgres://postgres:becd1f3c85c65c97f57c8a4ee2c96c6c00266a19@100.116.185.70:55439/analytics?sslmode=disable", client)
+	dbStore, err = db.NewStore(timescaleURL, client)
 	if err != nil {
 		log.Printf("[TimescaleDB] Connect error: %v", err)
 	} else {
+		log.Printf("[TimescaleDB] Successfully connected to database")
 		// Run initial 30-day historical backfill asynchronously
 		go func() {
 			time.Sleep(3 * time.Second)
@@ -66,7 +100,7 @@ func main() {
 	log.Printf("\n=======================================================")
 	log.Printf(" 🚀 Go Felicity Solar Dashboard Server Running!")
 	log.Printf(" Access UI in Browser: http://localhost:%d", Port)
-	log.Printf(" TimescaleDB Backend Connected: 100.116.185.70:55439")
+	log.Printf(" TimescaleDB Backend: %s", timescaleURL)
 	log.Printf("=======================================================\n")
 
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", Port), handler); err != nil {
