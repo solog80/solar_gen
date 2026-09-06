@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PeriodBreakdownResponse, PeriodItem } from '../types';
+import { getApiUrl } from '../apiConfig';
 import {
   X,
   Calendar as CalendarIcon,
@@ -37,7 +38,7 @@ export const PeriodBreakdownModal: React.FC<PeriodBreakdownModalProps> = ({
       const querySn = deviceSn ? `&sn=${deviceSn}` : '';
       const queryStart = startDate ? `&start_date=${startDate}` : '';
       const queryEnd = endDate ? `&end_date=${endDate}` : '';
-      const res = await fetch(`/api/breakdown?period=${period}${querySn}${queryStart}${queryEnd}`);
+      const res = await fetch(getApiUrl(`/api/breakdown?period=${period}${querySn}${queryStart}${queryEnd}`));
       const result: PeriodBreakdownResponse = await res.json();
       setData(result);
     } catch (err) {

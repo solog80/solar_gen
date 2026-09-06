@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, UserPlus, Trash2, Users, Shield, User } from 'lucide-react';
 import { DashboardUser } from '../types';
+import { getApiUrl } from '../apiConfig';
 
 interface UserManagementModalProps {
   isOpen: boolean;
@@ -21,7 +22,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/auth/users');
+      const res = await fetch(getApiUrl('/api/auth/users'));
       const data: DashboardUser[] = await res.json();
       setUsers(data || []);
     } catch (err) {
@@ -45,7 +46,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
 
     try {
       setMsg('Creating user...');
-      const res = await fetch('/api/auth/users', {
+      const res = await fetch(getApiUrl('/api/auth/users'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -74,7 +75,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     if (!window.confirm(`Are you sure you want to delete user "${uname}"?`)) return;
 
     try {
-      const res = await fetch(`/api/auth/users?id=${id}`, { method: 'DELETE' });
+      const res = await fetch(getApiUrl(`/api/auth/users?id=${id}`), { method: 'DELETE' });
       if (res.ok) {
         setMsg(`User "${uname}" removed.`);
         fetchUsers();

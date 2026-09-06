@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SavingsAnalytics } from '../types';
 import { PeriodBreakdownModal } from './PeriodBreakdownModal';
+import { getApiUrl } from '../apiConfig';
 import {
   Coins,
   RefreshCw,
@@ -31,7 +32,7 @@ export const AnalyticsSummary: React.FC<AnalyticsSummaryProps> = ({
     try {
       setIsBackfilling(true);
       setBackfillMsg(`Fetching past ${days} days from Shine API...`);
-      const res = await fetch(`/api/backfill?days=${days}`);
+      const res = await fetch(getApiUrl(`/api/backfill?days=${days}`));
       const data = await res.json();
       setBackfillMsg(`Successfully synced ${data.records_saved} historical records!`);
       onRefreshAnalytics();

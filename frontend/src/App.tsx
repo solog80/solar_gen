@@ -9,6 +9,7 @@ import { LoginModal } from './components/LoginModal';
 import { UserManagementModal } from './components/UserManagementModal';
 import { PowerChart } from './components/PowerChart';
 import { TelemetryResponse, HistoryPoint, DeviceItem, SavingsAnalytics, DashboardUser } from './types';
+import { getApiUrl } from './apiConfig';
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<DashboardUser | null>(() => {
@@ -42,7 +43,7 @@ export const App: React.FC = () => {
   const fetchTelemetry = async () => {
     try {
       setIsRefreshing(true);
-      const res = await fetch('/api/status');
+      const res = await fetch(getApiUrl('/api/status'));
       const data: TelemetryResponse = await res.json();
       setTelemetry(data);
     } catch (err) {
@@ -54,7 +55,7 @@ export const App: React.FC = () => {
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch('/api/history');
+      const res = await fetch(getApiUrl('/api/history'));
       const data: HistoryPoint[] = await res.json();
       setHistory(data);
     } catch (err) {
@@ -64,7 +65,7 @@ export const App: React.FC = () => {
 
   const fetchAnalytics = async () => {
     try {
-      const res = await fetch('/api/analytics');
+      const res = await fetch(getApiUrl('/api/analytics'));
       const data: SavingsAnalytics = await res.json();
       setAnalytics(data);
     } catch (err) {

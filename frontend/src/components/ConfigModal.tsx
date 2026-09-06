@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, KeyRound, Loader2 } from 'lucide-react';
+import { getApiUrl } from '../apiConfig';
 
 interface ConfigModalProps {
   isOpen: boolean;
@@ -27,7 +28,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
     setMessage(null);
 
     try {
-      const res = await fetch('/api/config', {
+      const res = await fetch(getApiUrl('/api/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),

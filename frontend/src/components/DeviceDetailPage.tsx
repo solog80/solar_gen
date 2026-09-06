@@ -23,6 +23,7 @@ import {
 import { Line } from 'react-chartjs-2';
 import { DeviceItem, HistoryPoint, SavingsAnalytics } from '../types';
 import { AnalyticsSummary } from './AnalyticsSummary';
+import { getApiUrl } from '../apiConfig';
 
 ChartJS.register(
   CategoryScale,
@@ -47,7 +48,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, onBa
 
   const fetchDeviceAnalytics = async () => {
     try {
-      const res = await fetch(`/api/analytics?sn=${encodeURIComponent(device.sn)}`);
+      const res = await fetch(getApiUrl(`/api/analytics?sn=${encodeURIComponent(device.sn)}`));
       const data: SavingsAnalytics = await res.json();
       setDeviceAnalytics(data);
     } catch (err) {
@@ -58,7 +59,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, onBa
   const fetchDeviceHistory = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch(`/api/device/history?sn=${encodeURIComponent(device.sn)}`);
+      const res = await fetch(getApiUrl(`/api/device/history?sn=${encodeURIComponent(device.sn)}`));
       const data: HistoryPoint[] = await res.json();
       setDeviceHistory(data);
     } catch (err) {
