@@ -5,9 +5,10 @@ import { getApiUrl, getApiBaseUrl, setApiBaseUrl } from '../apiConfig';
 
 interface LoginModalProps {
   onLoginSuccess: (user: DashboardUser, token: string) => void;
+  onSkipLogin?: () => void;
 }
 
-export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
+export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess, onSkipLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +147,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
               </>
             )}
           </button>
+
+          {onSkipLogin && (
+            <button
+              type="button"
+              onClick={onSkipLogin}
+              className="w-full py-2.5 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 text-gray-300 font-semibold text-xs transition flex items-center justify-center gap-2"
+            >
+              <span>Skip Login & Enter Dashboard</span>
+            </button>
+          )}
         </form>
 
         {/* Quick Demo Credentials */}
