@@ -1,0 +1,16 @@
+# Binary executables
+server
+*.exe
+*.out
+
+# Node dependencies & React build
+frontend/node_modules/
+frontend/dist/
+
+# Local Environment & Credentials
+.env
+pkg/felicity/config.json
+.felicity_solar/
+
+# OS metadata
+.DS_Store
