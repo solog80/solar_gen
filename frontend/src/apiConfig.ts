@@ -2,7 +2,7 @@ export function getApiBaseUrl(): string {
   const customUrl = localStorage.getItem('dash_api_base_url');
   if (customUrl) return customUrl;
   const envUrl = ((import.meta as any).env?.VITE_API_BASE_URL as string) || '';
-  return envUrl;
+  return envUrl || 'https://solar-analytics.solofx.net';
 }
 
 export function setApiBaseUrl(url: string): void {
