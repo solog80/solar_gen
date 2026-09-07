@@ -1,0 +1,7 @@
+FROM alpine:latest
+RUN apk add --no-cache tzdata ca-certificates
+WORKDIR /app
+COPY server_qnap_linux /app/server
+COPY .env /app/.env
+EXPOSE 8085
+CMD ["/app/server"]

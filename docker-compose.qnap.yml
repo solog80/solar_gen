@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  felicity_solar_backend:
+    image: alpine:latest
+    container_name: felicity_solar_backend
+    restart: always
+    network_mode: host
+    working_dir: /app
+    volumes:
+      - /share/CACHEDEV1_DATA/solar_dashboard:/app
+    command: /app/server
