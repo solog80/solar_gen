@@ -392,7 +392,7 @@ func (s *Store) Get24HourHistory(deviceSN string) ([]felicity.HistoryPoint, erro
 
 	query := `
 		SELECT 
-			to_char(tb, 'HH24:00') AS hour_label,
+			to_char(tb + INTERVAL '3 hours', 'HH24:00') AS hour_label,
 			COALESCE(AVG(pv_power_w), 0.0) as pv_power,
 			COALESCE(AVG(load_power_w), 0.0) as load_power,
 			COALESCE(AVG(battery_soc), 0.0) as battery_soc,

@@ -22,6 +22,8 @@ const (
 	DeviceSnapshotURL = "https://shine-api.felicitysolar.com/device/get_device_snapshot"
 )
 
+var EATLocation = time.FixedZone("EAT", 3*3600)
+
 type Client struct {
 	mu          sync.RWMutex
 	configPath  string
@@ -225,7 +227,7 @@ func (c *Client) FetchDevices() []DeviceRawItem {
 }
 
 func (c *Client) FetchDeviceSnapshot(deviceSN string) map[string]interface{} {
-	return c.FetchDeviceSnapshotForDate(deviceSN, time.Now().Format("2006-01-02"))
+	return c.FetchDeviceSnapshotForDate(deviceSN, time.Now().In(EATLocation).Format("2006-01-02"))
 }
 
 func (c *Client) FetchDeviceSnapshotForDate(deviceSN string, dateStr string) map[string]interface{} {
@@ -571,7 +573,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 			}
 
 			var resp TelemetryResponse
-			resp.Timestamp = time.Now().Format("2006-01-02 15:04:05")
+			resp.Timestamp = time.Now().In(EATLocation).Format("2006-01-02 15:04:05")
 			resp.IsLive = true
 			resp.Configured = true
 			resp.PlantInfo.Name = plantName

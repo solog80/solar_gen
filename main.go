@@ -269,7 +269,7 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 	// Always append/update latest point with live telemetry
 	live := client.GetTelemetry()
 	livePoint := felicity.HistoryPoint{
-		Time:          time.Now().Format("15:04"),
+		Time:          time.Now().In(felicity.EATLocation).Format("15:04"),
 		PvPower:       live.Solar.PowerW,
 		LoadPower:     live.Load.PowerW,
 		BatterySoc:    live.Battery.SocPercent,
@@ -315,7 +315,7 @@ func handleDeviceHistory(w http.ResponseWriter, r *http.Request) {
 
 	if targetDev != nil {
 		livePoint := felicity.HistoryPoint{
-			Time:          time.Now().Format("15:04"),
+			Time:          time.Now().In(felicity.EATLocation).Format("15:04"),
 			PvPower:       targetDev.PvPowerW,
 			LoadPower:     targetDev.LoadPowerW,
 			BatterySoc:    targetDev.BatterySoc,
