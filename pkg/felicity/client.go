@@ -94,6 +94,7 @@ func (c *Client) SaveConfig() {
 		log.Printf("Error marshaling config: %v", err)
 		return
 	}
+	_ = os.MkdirAll(filepath.Dir(c.configPath), 0755)
 	_ = os.WriteFile(c.configPath, data, 0644)
 }
 
@@ -291,7 +292,7 @@ func CalculateSOCFromVoltage(v float64) float64 {
 }
 
 func (c *Client) GetTelemetry() TelemetryResponse {
-	if c.IsAuthenticated() {
+	if c.IsAuthenticated() || c.Login("", "") {
 		rawDevices := c.FetchDevices()
 		if len(rawDevices) > 0 {
 			var wg sync.WaitGroup
@@ -318,6 +319,8 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 			totalPV := 0.0
 			totalPVCurrent := 0.0
 			var pvVoltList []float64
+			var loadVoltList []float64
+			var loadFreqList []float64
 			totalLoad := 0.0
 			totalBatPower := 0.0
 			totalGridPower := 0.0
@@ -354,6 +357,8 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 
 				devGridPower := 0.0
 				devGridVolt := 230.0
+				devLoadVolt := 230.0
+				devLoadFreq := 50.0
 
 				if snap != nil {
 					// Parse PV Power
@@ -368,6 +373,21 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 						devLoad = parseFloat(v)
 					} else if v, ok := snap["acROutPower"]; ok && v != nil {
 						devLoad = parseFloat(v)
+					}
+
+					if v, ok := snap["acROutVolt"]; ok && v != nil && parseFloat(v) > 0 {
+						devLoadVolt = parseFloat(v)
+					}
+
+					devLoadCurrent := 0.0
+					if v, ok := snap["acROutCurr"]; ok && v != nil && parseFloat(v) > 0 {
+						devLoadCurrent = parseFloat(v)
+					} else if devLoadVolt > 0 {
+						devLoadCurrent = math.Round((devLoad / devLoadVolt)*10) / 10
+					}
+
+					if v, ok := snap["acROutFreq"]; ok && v != nil && parseFloat(v) > 0 {
+						devLoadFreq = parseFloat(v)
 					}
 
 					// Parse Grid Input Power & Voltage directly from raw telemetry
@@ -415,7 +435,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 					} else if v, ok := snap["emsSoc"]; ok && v != nil && parseFloat(v) > 1 {
 						devSoc = parseFloat(v)
 					}
-					
+
 					isDisconnected := false
 					if v, ok := snap["bmsFlagStr"]; ok && v != nil && v.(string) == "Disconnected" {
 						isDisconnected = true
@@ -428,32 +448,49 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 					// Parse raw Battery Power (Watts) from telemetry
 					rawBatPower := 0.0
 					if v, ok := snap["emsPower"]; ok && v != nil && parseFloat(v) != 0 {
-						rawBatPower = parseFloat(v)
+						rawBatPower = math.Abs(parseFloat(v))
 					} else if v, ok := snap["battPower"]; ok && v != nil && parseFloat(v) != 0 {
-						rawBatPower = parseFloat(v)
+						rawBatPower = math.Abs(parseFloat(v))
 					} else if devPV > 0 || devLoad > 0 {
-						rawBatPower = math.Round(math.Abs(devLoad - devPV)*10) / 10
+						rawBatPower = math.Round(math.Abs(devLoad-devPV)*10) / 10
 					}
 
-					// Parse Battery Current (Amps) directly from raw telemetry
+					// Parse Battery Current (Amps) directly from raw telemetry (supporting negative values from Shine API)
 					devBatCurrent := 0.0
-					if v, ok := snap["emsCurrent"]; ok && v != nil && parseFloat(v) > 0 {
-						devBatCurrent = parseFloat(v)
-					} else if v, ok := snap["battCurr"]; ok && v != nil && parseFloat(v) > 0 {
-						devBatCurrent = parseFloat(v)
+					if v, ok := snap["emsCurrent"]; ok && v != nil && math.Abs(parseFloat(v)) > 0 {
+						devBatCurrent = math.Abs(parseFloat(v))
+					} else if v, ok := snap["battCurr"]; ok && v != nil && math.Abs(parseFloat(v)) > 0 {
+						devBatCurrent = math.Abs(parseFloat(v))
 					} else if devBatVolt > 0 && rawBatPower > 0 {
 						devBatCurrent = math.Round((rawBatPower / devBatVolt)*10) / 10
 					}
 
-					// Set battery power sign: Negative = Charging, Positive = Discharging
-					if (devPV + devGridPower) >= devLoad {
+					// Set battery power sign: Positive = Discharging, Negative = Charging
+					if devLoad > (devPV + devGridPower + 5.0) {
+						// House load exceeds generation -> Battery is DISCHARGING
+						devBatPower = math.Abs(rawBatPower)
+					} else if (devPV + devGridPower) > (devLoad + 5.0) {
+						// Generation exceeds house load -> Battery is CHARGING
 						devBatPower = -1.0 * math.Abs(rawBatPower)
 					} else {
-						devBatPower = math.Abs(rawBatPower)
+						// Near balance -> fallback to raw emsCurrent sign if present
+						if v, ok := snap["emsCurrent"]; ok && v != nil {
+							emsI := parseFloat(v)
+							if emsI < 0 {
+								// Negative emsCurrent in Felicity API indicates Discharging
+								devBatPower = math.Abs(rawBatPower)
+							} else if emsI > 0 {
+								devBatPower = -1.0 * math.Abs(rawBatPower)
+							} else {
+								devBatPower = 0.0
+							}
+						} else {
+							devBatPower = 0.0
+						}
 					}
 
 					// Fallback calculation for battery current if missing
-					if devBatCurrent == 0 && devBatVolt > 0 {
+					if devBatCurrent == 0 && devBatVolt > 0 && math.Abs(devBatPower) > 0 {
 						devBatCurrent = math.Round((math.Abs(devBatPower) / devBatVolt)*10) / 10
 					}
 
@@ -470,8 +507,6 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 					} else if devVPV > 0 {
 						devPVCurrent = math.Round((devPV / devVPV)*10) / 10
 					}
-
-					devLoadCurrent := math.Round((devLoad / 230.0)*10) / 10
 
 					// Parse Temperature
 					if v, ok := snap["temperature"]; ok && v != nil {
@@ -527,6 +562,12 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 					if devVPV > 0 {
 						pvVoltList = append(pvVoltList, devVPV)
 					}
+					if devLoadVolt > 0 {
+						loadVoltList = append(loadVoltList, devLoadVolt)
+					}
+					if devLoadFreq > 0 {
+						loadFreqList = append(loadFreqList, devLoadFreq)
+					}
 					if devSoc > 0 {
 						socList = append(socList, devSoc)
 						batVoltList = append(batVoltList, devBatVolt)
@@ -565,6 +606,24 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 				avgPVVolt = math.Round((sumPVV/float64(len(pvVoltList)))*10) / 10
 			}
 
+			avgLoadVolt := 230.0
+			if len(loadVoltList) > 0 {
+				sumLV := 0.0
+				for _, v := range loadVoltList {
+					sumLV += v
+				}
+				avgLoadVolt = math.Round((sumLV/float64(len(loadVoltList)))*10) / 10
+			}
+
+			avgLoadFreq := 50.0
+			if len(loadFreqList) > 0 {
+				sumLF := 0.0
+				for _, v := range loadFreqList {
+					sumLF += v
+				}
+				avgLoadFreq = math.Round((sumLF/float64(len(loadFreqList)))*10) / 10
+			}
+
 			batStatus := "Idle"
 			if totalBatPower < 0 {
 				batStatus = "Charging"
@@ -590,8 +649,8 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 			resp.Battery.Status = batStatus
 
 			resp.Load.PowerW = math.Round(totalLoad*10) / 10
-			resp.Load.VoltageV = 230.0
-			resp.Load.FrequencyHz = 50.0
+			resp.Load.VoltageV = avgLoadVolt
+			resp.Load.FrequencyHz = avgLoadFreq
 
 			resp.Grid.PowerW = math.Round(totalGridPower*10) / 10
 			resp.Grid.VoltageV = 230.0
