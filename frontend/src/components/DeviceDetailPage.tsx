@@ -84,8 +84,8 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, onBa
 
   const batterySoc = Math.round(device.battery_soc);
   const batteryPower = Math.round(device.battery_power_w);
-  const batteryVoltage = 53.5;
-  const batteryAmps = device.battery_current_a || Math.round((Math.abs(batteryPower) / batteryVoltage) * 10) / 10;
+  const batteryVoltage = device.battery_voltage_v || 53.5;
+  const batteryAmps = device.battery_current_a || (batteryVoltage > 0 ? Math.round((Math.abs(batteryPower) / batteryVoltage) * 10) / 10 : 0);
   const batteryStatus = batteryPower < 0 ? 'Charging' : (batteryPower > 0 ? 'Discharging' : 'Idle');
 
   const renderLedDots = (soc: number) => {
@@ -464,8 +464,10 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, onBa
         <div className="glass-card p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-base font-bold text-gray-100">Battery SOC & Power Curve</h3>
-              <p className="text-xs text-gray-400">24-Hour Storage Charge/Discharge Cycle</p>
+              <h3 className="text-base font-bold text-gray-100">Battery SOC & Net Power Trend</h3>
+              <p className="text-xs text-gray-400">
+                24-Hour Battery Storage — Green: State of Charge (%) | Purple: Charge/Discharge Power (Negative = Charging, Positive = Discharging)
+              </p>
             </div>
             <div className="flex items-center gap-3 text-xs">
               <span className="flex items-center gap-1.5 text-gray-300">

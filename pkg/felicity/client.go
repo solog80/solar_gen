@@ -314,6 +314,8 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 
 			var deviceItems []DeviceItem
 			totalPV := 0.0
+			totalPVCurrent := 0.0
+			var pvVoltList []float64
 			totalLoad := 0.0
 			totalBatPower := 0.0
 			totalGridPower := 0.0
@@ -346,6 +348,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 				devBatVolt := 51.85
 				devTemp := 36.5
 				devVPV := 240.0
+				devPVCurrent := 0.0
 
 				devGridPower := 0.0
 				devGridVolt := 230.0
@@ -387,8 +390,13 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 						devGridVolt = parseFloat(v)
 					}
 
-					// If AC Grid current is 0 or grid power is 0, set grid power strictly to 0.0 W
-					if devGridCurr == 0 || devGridPower <= 0 {
+					// Calculate Grid Current if missing and Grid Power is positive
+					if devGridCurr == 0 && devGridPower > 0 && devGridVolt > 0 {
+						devGridCurr = math.Round((devGridPower/devGridVolt)*10) / 10
+					}
+
+					// Ensure non-negative grid power
+					if devGridPower < 0 {
 						devGridPower = 0.0
 					}
 
@@ -415,34 +423,57 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 						devSoc = math.Round(CalculateSOCFromVoltage(devBatVolt)*10) / 10
 					}
 
-					// Calculate net active battery power from energy balance if missing
+					// Parse raw Battery Power (Watts) from telemetry
+					rawBatPower := 0.0
 					if v, ok := snap["emsPower"]; ok && v != nil && parseFloat(v) != 0 {
-						devBatPower = parseFloat(v)
+						rawBatPower = parseFloat(v)
 					} else if v, ok := snap["battPower"]; ok && v != nil && parseFloat(v) != 0 {
-						devBatPower = parseFloat(v)
+						rawBatPower = parseFloat(v)
 					} else if devPV > 0 || devLoad > 0 {
-						devBatPower = math.Round((devLoad - devPV)*10) / 10
+						rawBatPower = math.Round(math.Abs(devLoad - devPV)*10) / 10
 					}
 
-					// Calculate Currents (Amps)
-					devPVCurrent := 0.0
-					if devVPV > 0 {
-						devPVCurrent = math.Round((devPV / devVPV)*10) / 10
-					}
-					devLoadCurrent := math.Round((devLoad / 230.0)*10) / 10
+					// Parse Battery Current (Amps) directly from raw telemetry
 					devBatCurrent := 0.0
-					if devBatVolt > 0 {
+					if v, ok := snap["emsCurrent"]; ok && v != nil && parseFloat(v) > 0 {
+						devBatCurrent = parseFloat(v)
+					} else if v, ok := snap["battCurr"]; ok && v != nil && parseFloat(v) > 0 {
+						devBatCurrent = parseFloat(v)
+					} else if devBatVolt > 0 && rawBatPower > 0 {
+						devBatCurrent = math.Round((rawBatPower / devBatVolt)*10) / 10
+					}
+
+					// Set battery power sign: Negative = Charging, Positive = Discharging
+					if (devPV + devGridPower) >= devLoad {
+						devBatPower = -1.0 * math.Abs(rawBatPower)
+					} else {
+						devBatPower = math.Abs(rawBatPower)
+					}
+
+					// Fallback calculation for battery current if missing
+					if devBatCurrent == 0 && devBatVolt > 0 {
 						devBatCurrent = math.Round((math.Abs(devBatPower) / devBatVolt)*10) / 10
 					}
+
+					// Parse PV Voltage first from raw telemetry
+					if v, ok := snap["pvVolt"]; ok && v != nil && parseFloat(v) > 0 {
+						devVPV = parseFloat(v)
+					}
+
+					// Parse PV Current (Amps) directly from raw telemetry (pvInCurr)
+					if v, ok := snap["pvInCurr"]; ok && v != nil && parseFloat(v) > 0 {
+						devPVCurrent = parseFloat(v)
+					} else if v, ok := snap["pvCurr"]; ok && v != nil && parseFloat(v) > 0 {
+						devPVCurrent = parseFloat(v)
+					} else if devVPV > 0 {
+						devPVCurrent = math.Round((devPV / devVPV)*10) / 10
+					}
+
+					devLoadCurrent := math.Round((devLoad / 230.0)*10) / 10
 
 					// Parse Temperature
 					if v, ok := snap["temperature"]; ok && v != nil {
 						devTemp = parseFloat(v)
-					}
-
-					// Parse PV Voltage
-					if v, ok := snap["pvVolt"]; ok && v != nil {
-						devVPV = parseFloat(v)
 					}
 
 					typeName := "Hybrid Solar Inverter"
@@ -468,6 +499,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 						BatterySoc:      devSoc,
 						BatteryPowerW:   devBatPower,
 						BatteryCurrentA: devBatCurrent,
+						BatteryVoltageV: devBatVolt,
 						GridPowerW:      devGridPower,
 						GridVoltageV:    devGridVolt,
 						CollectorSN:     dev.CollectorSN,
@@ -489,6 +521,10 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 					totalLoad += devLoad
 					totalBatPower += devBatPower
 					totalGridPower += devGridPower
+					totalPVCurrent += devPVCurrent
+					if devVPV > 0 {
+						pvVoltList = append(pvVoltList, devVPV)
+					}
 					if devSoc > 0 {
 						socList = append(socList, devSoc)
 						batVoltList = append(batVoltList, devBatVolt)
@@ -518,6 +554,15 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 				avgBatVolt = math.Round((sumV/float64(len(batVoltList)))*100) / 100
 			}
 
+			avgPVVolt := 120.0
+			if len(pvVoltList) > 0 {
+				sumPVV := 0.0
+				for _, v := range pvVoltList {
+					sumPVV += v
+				}
+				avgPVVolt = math.Round((sumPVV/float64(len(pvVoltList)))*10) / 10
+			}
+
 			batStatus := "Idle"
 			if totalBatPower < 0 {
 				batStatus = "Charging"
@@ -534,8 +579,8 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 			resp.PlantInfo.Status = "Normal Operation"
 
 			resp.Solar.PowerW = math.Round(totalPV*10) / 10
-			resp.Solar.VoltageV = 240.0
-			resp.Solar.CurrentA = math.Round((totalPV/240.0)*10) / 10
+			resp.Solar.VoltageV = avgPVVolt
+			resp.Solar.CurrentA = math.Round(totalPVCurrent*10) / 10
 
 			resp.Battery.SocPercent = avgSOC
 			resp.Battery.PowerW = math.Round(totalBatPower*10) / 10

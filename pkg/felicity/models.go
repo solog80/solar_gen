@@ -75,6 +75,7 @@ type DeviceItem struct {
 	BatterySoc      float64 `json:"battery_soc"`
 	BatteryPowerW   float64 `json:"battery_power_w"`
 	BatteryCurrentA float64 `json:"battery_current_a"`
+	BatteryVoltageV float64 `json:"battery_voltage_v"`
 	GridPowerW      float64 `json:"grid_power_w"`
 	GridVoltageV    float64 `json:"grid_voltage_v"`
 	CollectorSN     string  `json:"collector_sn"`

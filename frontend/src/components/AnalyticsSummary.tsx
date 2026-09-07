@@ -68,7 +68,7 @@ export const AnalyticsSummary: React.FC<AnalyticsSummaryProps> = ({
           </div>
           <div>
             <h2 className="text-base sm:text-lg font-bold text-gray-100 flex items-center gap-2">
-              <span>{titlePrefix}QNAP TimescaleDB Savings Analytics</span>
+              <span>{titlePrefix}Analytics</span>
             </h2>
             <p className="text-[11px] sm:text-xs text-gray-400">
               1-Year Timeseries Energy Accumulation & Cost Savings Engine

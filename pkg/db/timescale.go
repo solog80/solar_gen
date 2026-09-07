@@ -305,9 +305,11 @@ func (s *Store) GetAnalytics(deviceSN string, startDate string, endDate string) 
 	a.TotalSavingsUSD = math.Round((a.TotalSavingsUGX / UGXToUSD) * 100) / 100
 
 	if a.TotalLoadKWh > 0 {
-		a.SolarSelfSuffPct = math.Min(100.0, math.Round((a.TotalSolarKWh / a.TotalLoadKWh) * 1000) / 10)
+		nonGridLoadKWh := math.Max(0.0, a.TotalLoadKWh-a.TotalGridKWh)
+		solarContribKWh := math.Min(a.TotalSolarKWh, nonGridLoadKWh)
+		a.SolarSelfSuffPct = math.Max(0.0, math.Min(100.0, math.Round((solarContribKWh/a.TotalLoadKWh)*1000)/10))
 	} else {
-		a.SolarSelfSuffPct = 100.0
+		a.SolarSelfSuffPct = 0.0
 	}
 
 	return a, nil
@@ -381,6 +383,54 @@ func (s *Store) GetPeriodBreakdown(deviceSN string, period string, startDate str
 	}
 
 	return resp, nil
+}
+
+func (s *Store) Get24HourHistory(deviceSN string) ([]felicity.HistoryPoint, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	query := `
+		SELECT 
+			to_char(tb, 'HH24:00') AS hour_label,
+			COALESCE(AVG(pv_power_w), 0.0) as pv_power,
+			COALESCE(AVG(load_power_w), 0.0) as load_power,
+			COALESCE(AVG(battery_soc), 0.0) as battery_soc,
+			COALESCE(AVG(battery_power_w), 0.0) as battery_power,
+			COALESCE(AVG(grid_power_w), 0.0) as grid_power
+		FROM (
+			SELECT time_bucket('1 hour', time) AS tb,
+			       pv_power_w, load_power_w, battery_soc, battery_power_w, grid_power_w
+			FROM felicity_solar_telemetry
+			WHERE ($1 = '' OR device_sn = $1)
+			  AND time >= NOW() - INTERVAL '24 hours'
+			  AND time <= NOW()
+		) sub
+		GROUP BY tb
+		ORDER BY tb ASC
+		LIMIT 25
+	`
+
+	rows, err := s.db.Query(query, deviceSN)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var history []felicity.HistoryPoint
+	for rows.Next() {
+		var h felicity.HistoryPoint
+		if err := rows.Scan(&h.Time, &h.PvPower, &h.LoadPower, &h.BatterySoc, &h.BatteryPowerW, &h.GridPowerW); err == nil {
+			h.PvPower = math.Round(h.PvPower*10) / 10
+			h.LoadPower = math.Round(h.LoadPower*10) / 10
+			h.BatterySoc = math.Round(h.BatterySoc*10) / 10
+			h.BatteryPowerW = math.Round(h.BatteryPowerW*10) / 10
+			h.GridPowerW = math.Round(h.GridPowerW*10) / 10
+			history = append(history, h)
+		}
+	}
+
+	return history, nil
 }
 
 func felicityParseFloat(v interface{}) float64 {

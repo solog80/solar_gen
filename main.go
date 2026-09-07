@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -257,31 +256,33 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now()
+	w.Header().Set("Content-Type", "application/json")
+
 	var history []felicity.HistoryPoint
-
-	for i := 24; i > 0; i-- {
-		tPoint := now.Add(time.Duration(-i) * time.Hour)
-		hourStr := tPoint.Format("15:00")
-		hour := tPoint.Hour()
-
-		var pv float64
-		if hour >= 6 && hour <= 18 {
-			pv = math.Round((4200.0*math.Sin(math.Pi*float64(hour-6)/12.0))*10) / 10
+	if dbStore != nil {
+		h, err := dbStore.Get24HourHistory("")
+		if err == nil && len(h) > 0 {
+			history = h
 		}
-		load := math.Round((1400.0+500.0*math.Sin(float64(hour)/4.0))*10) / 10
-		soc := math.Max(30, math.Min(100, math.Round((50.0+40.0*math.Sin(float64(hour-8)/4.0))*10)/10))
-
-		history = append(history, felicity.HistoryPoint{
-			Time:          hourStr,
-			PvPower:       pv,
-			LoadPower:     load,
-			BatterySoc:    soc,
-			BatteryPowerW: -350.0,
-		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	// Always append/update latest point with live telemetry
+	live := client.GetTelemetry()
+	livePoint := felicity.HistoryPoint{
+		Time:          time.Now().Format("15:04"),
+		PvPower:       live.Solar.PowerW,
+		LoadPower:     live.Load.PowerW,
+		BatterySoc:    live.Battery.SocPercent,
+		BatteryPowerW: live.Battery.PowerW,
+		GridPowerW:    live.Grid.PowerW,
+	}
+
+	if len(history) > 0 {
+		history = append(history, livePoint)
+	} else {
+		history = []felicity.HistoryPoint{livePoint}
+	}
+
 	_ = json.NewEncoder(w).Encode(history)
 }
 
@@ -292,67 +293,38 @@ func handleDeviceHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	deviceSN := r.URL.Query().Get("sn")
-	now := time.Now()
-	var history []felicity.HistoryPoint
+	w.Header().Set("Content-Type", "application/json")
 
-	// Multiplier/scaling per device SN
-	pvScale := 2500.0
-	if deviceSN == "010310004824340147" { // Luzira
-		pvScale = 1700.0
-	} else if deviceSN == "01031004822320027" { // Solo Mutungo
-		pvScale = 2600.0
-	} else if deviceSN == "07084820022160303" { // Luzira Battery
-		pvScale = 0.0
+	var history []felicity.HistoryPoint
+	if dbStore != nil {
+		h, err := dbStore.Get24HourHistory(deviceSN)
+		if err == nil && len(h) > 0 {
+			history = h
+		}
 	}
 
-	currentSoc := 60.0
-	currentGrid := 0.0
-	telemetry := client.GetTelemetry()
-	for _, dev := range telemetry.Devices {
+	// Find live device telemetry
+	live := client.GetTelemetry()
+	var targetDev *felicity.DeviceItem
+	for _, dev := range live.Devices {
 		if dev.SN == deviceSN {
-			if dev.BatterySoc > 0 {
-				currentSoc = dev.BatterySoc
-			}
-			currentGrid = dev.GridPowerW
+			targetDev = &dev
 			break
 		}
 	}
 
-	for i := 24; i > 0; i-- {
-		tPoint := now.Add(time.Duration(-i) * time.Hour)
-		hourStr := tPoint.Format("15:00")
-		hour := tPoint.Hour()
-
-		var pv float64
-		if hour >= 6 && hour <= 18 && pvScale > 0 {
-			pv = math.Round((pvScale*math.Sin(math.Pi*float64(hour-6)/12.0))*10) / 10
+	if targetDev != nil {
+		livePoint := felicity.HistoryPoint{
+			Time:          time.Now().Format("15:04"),
+			PvPower:       targetDev.PvPowerW,
+			LoadPower:     targetDev.LoadPowerW,
+			BatterySoc:    targetDev.BatterySoc,
+			BatteryPowerW: targetDev.BatteryPowerW,
+			GridPowerW:    targetDev.GridPowerW,
 		}
-		load := math.Round((700.0+300.0*math.Sin(float64(hour)/3.0))*10) / 10
-		if pvScale == 0 {
-			load = 0
-		}
-
-		// Anchor the latest hour point (i = 1) exactly to currentSoc (60%)
-		socOffset := 3.0 * math.Sin(float64(i-1)/3.0)
-		batSoc := math.Max(15.0, math.Min(100.0, math.Round((currentSoc - socOffset)*10)/10))
-		batPower := math.Round((200.0*math.Sin(float64(hour-12)/3.0))*10) / 10
-		
-		gridPower := 0.0
-		if currentGrid > 0 {
-			gridPower = math.Round((currentGrid + 40.0*math.Cos(float64(hour)/2.5))*10) / 10
-		}
-
-		history = append(history, felicity.HistoryPoint{
-			Time:          hourStr,
-			PvPower:       pv,
-			LoadPower:     load,
-			BatterySoc:    batSoc,
-			BatteryPowerW: batPower,
-			GridPowerW:    gridPower,
-		})
+		history = append(history, livePoint)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(history)
 }
 

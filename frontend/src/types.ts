@@ -16,6 +16,7 @@ export interface DeviceItem {
   battery_soc: number;
   battery_power_w: number;
   battery_current_a?: number;
+  battery_voltage_v?: number;
   grid_power_w?: number;
   grid_voltage_v?: number;
   collector_sn: string;
