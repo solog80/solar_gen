@@ -46,11 +46,18 @@ func loadEnv(filename string) {
 }
 
 func main() {
-	loadEnv(".env")
+	execPath, err := os.Executable()
+	execDir := ""
+	if err == nil {
+		execDir = filepath.Dir(execPath)
+	} else {
+		execDir, _ = os.Getwd()
+	}
+	_ = os.Chdir(execDir)
 
-	execDir, _ := os.Getwd()
+	loadEnv(filepath.Join(execDir, ".env"))
+
 	pkgDir := filepath.Join(execDir, "pkg", "felicity")
-
 	client = felicity.NewClient(pkgDir)
 
 	timescaleURL := os.Getenv("TIMESCALE_URL")
@@ -58,10 +65,10 @@ func main() {
 		timescaleURL = "postgres://postgres:becd1f3c85c65c97f57c8a4ee2c96c6c00266a19@100.116.185.70:55439/analytics?sslmode=disable"
 	}
 
-	var err error
-	dbStore, err = db.NewStore(timescaleURL, client)
-	if err != nil {
-		log.Printf("[TimescaleDB] Connect error: %v", err)
+	var dbErr error
+	dbStore, dbErr = db.NewStore(timescaleURL, client)
+	if dbErr != nil {
+		log.Printf("[TimescaleDB] Connect error: %v", dbErr)
 	} else {
 		log.Printf("[TimescaleDB] Successfully connected to database")
 		// Run initial 30-day historical backfill asynchronously
