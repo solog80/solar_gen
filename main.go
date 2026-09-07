@@ -97,13 +97,19 @@ func main() {
 
 	handler := corsMiddleware(mux)
 
+	portStr := os.Getenv("PORT")
+	port := 8086
+	if p, err := strconv.Atoi(portStr); err == nil && p > 0 {
+		port = p
+	}
+
 	log.Printf("\n=======================================================")
 	log.Printf(" 🚀 Go Felicity Solar Dashboard Server Running!")
-	log.Printf(" Access UI in Browser: http://localhost:%d", Port)
+	log.Printf(" Access UI in Browser: http://localhost:%d", port)
 	log.Printf(" TimescaleDB Backend: %s", timescaleURL)
 	log.Printf("=======================================================\n")
 
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", Port), handler); err != nil {
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", port), handler); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }
