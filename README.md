@@ -26,15 +26,15 @@ High-performance **Go (Golang)** backend paired with a modern, glassmorphic **Re
                                   └──────────────────────┬───────────────────────┘
                                                          │ HTTPS Snapshot Queries
                                                          ▼
-┌─────────────────────────┐               ┌──────────────────────────────────────┐
-│  React 18 Frontend      │  HTTP REST    │   Go (Golang) Backend Server         │
-│  (TypeScript/Vite/Tail) │◄─────────────►│   (Port 8085, Goroutines Engine)     │
+┌─────────────────────────┐   HTTPS REST  ┌──────────────────────────────────────┐
+│  React 18 Frontend      │  (Cloudflare) │   QNAP NAS Go Backend Container      │
+│  (solar.solofx.net)     │◄─────────────►│   (solar-analytics.solofx.net:8086)  │
 └─────────────────────────┘               └──────────────────────┬───────────────┘
                                                                  │ 5-Min Telemetry Logs
                                                                  ▼
                                           ┌──────────────────────────────────────┐
                                           │  QNAP NAS TimescaleDB Hypertable     │
-                                          │  (100.116.185.70:55439 / analytics)   │
+                                          │  (192.168.0.112:55439 / analytics)   │
                                           └──────────────────────────────────────┘
 ```
 

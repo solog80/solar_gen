@@ -152,9 +152,9 @@ export const App: React.FC = () => {
     if (saved) {
       try { return JSON.parse(saved); } catch (e) {}
     }
-    return { id: 1, username: 'solo', role: 'admin' };
+    return null;
   });
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('dash_token') || 'active_session');
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('dash_token'));
 
   const [telemetry, setTelemetry] = useState<TelemetryResponse | null>(fallbackTelemetry);
   const [history, setHistory] = useState<HistoryPoint[]>(fallbackHistory);
