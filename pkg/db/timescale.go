@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sync"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -12,8 +13,10 @@ import (
 )
 
 type Store struct {
-	db     *sql.DB
-	client *felicity.Client
+	db          *sql.DB
+	client      *felicity.Client
+	lastSaved   map[string]time.Time
+	lastSavedMu sync.Mutex
 }
 
 type SavingsAnalytics struct {
@@ -47,7 +50,11 @@ func NewStore(connStr string, client *felicity.Client) (*Store, error) {
 		log.Printf("[TimescaleDB] Successfully connected to TimescaleDB at %s", connStr)
 	}
 
-	store := &Store{db: db, client: client}
+	store := &Store{
+		db:        db,
+		client:    client,
+		lastSaved: make(map[string]time.Time),
+	}
 	store.InitSchema()
 	return store, nil
 }
@@ -172,6 +179,22 @@ func (s *Store) SaveTelemetry(t felicity.TelemetryResponse) error {
 	if s.db == nil {
 		return nil
 	}
+
+	s.lastSavedMu.Lock()
+	now := time.Now()
+	shouldSave := false
+	for _, dev := range t.Devices {
+		if dev.SN != "" && now.Sub(s.lastSaved[dev.SN]) >= 5*time.Minute {
+			shouldSave = true
+			break
+		}
+	}
+	if !shouldSave {
+		s.lastSavedMu.Unlock()
+		return nil
+	}
+	s.lastSavedMu.Unlock()
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -188,9 +211,14 @@ func (s *Store) SaveTelemetry(t felicity.TelemetryResponse) error {
 	}
 	defer stmt.Close()
 
+	s.lastSavedMu.Lock()
 	for _, dev := range t.Devices {
-		_, _ = stmt.Exec(dev.SN, dev.Alias, dev.PvPowerW, dev.LoadPowerW, dev.BatterySoc, dev.BatteryPowerW, dev.GridPowerW)
+		if dev.SN != "" && now.Sub(s.lastSaved[dev.SN]) >= 5*time.Minute {
+			_, _ = stmt.Exec(dev.SN, dev.Alias, dev.PvPowerW, dev.LoadPowerW, dev.BatterySoc, dev.BatteryPowerW, dev.GridPowerW)
+			s.lastSaved[dev.SN] = now
+		}
 	}
+	s.lastSavedMu.Unlock()
 
 	return tx.Commit()
 }
@@ -279,16 +307,25 @@ func (s *Store) GetAnalytics(deviceSN string, startDate string, endDate string) 
 
 	query := `
 		SELECT 
-			COALESCE(SUM(pv_power_w * (5.0/60.0) / 1000.0), 0.0) as solar_kwh,
-			COALESCE(SUM(load_power_w * (5.0/60.0) / 1000.0), 0.0) as load_kwh,
-			COALESCE(SUM(grid_power_w * (5.0/60.0) / 1000.0), 0.0) as grid_kwh,
+			COALESCE(SUM(pv_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0), 0.0) as solar_kwh,
+			COALESCE(SUM(load_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0), 0.0) as load_kwh,
+			COALESCE(SUM(grid_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0), 0.0) as grid_kwh,
 			COUNT(*) as cnt,
 			COALESCE(MIN(time)::text, '') as earliest,
 			COALESCE(MAX(time)::text, '') as latest
-		FROM felicity_solar_telemetry
-		WHERE ($1 = '' OR device_sn = $1)
-		  AND ($2 = '' OR time >= $2::timestamp)
-		  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
+		FROM (
+			SELECT 
+				time,
+				device_sn,
+				pv_power_w,
+				load_power_w,
+				grid_power_w,
+				LAG(time) OVER (PARTITION BY device_sn ORDER BY time) as prev_time
+			FROM felicity_solar_telemetry
+			WHERE ($1 = '' OR device_sn = $1)
+			  AND ($2 = '' OR time >= $2::timestamp)
+			  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
+		) sub
 	`
 
 	row := s.db.QueryRow(query, deviceSN, startDate, endDate)
@@ -296,6 +333,10 @@ func (s *Store) GetAnalytics(deviceSN string, startDate string, endDate string) 
 	if err != nil {
 		return a, err
 	}
+
+	a.TotalSolarKWh = math.Round(a.TotalSolarKWh*100) / 100
+	a.TotalLoadKWh = math.Round(a.TotalLoadKWh*100) / 100
+	a.TotalGridKWh = math.Round(a.TotalGridKWh*100) / 100
 
 	// Umeme Uganda average tariff rate: ~890 UGX / kWh ($0.24 USD)
 	const TariffUGXPerKWh = 890.0
@@ -348,14 +389,24 @@ func (s *Store) GetPeriodBreakdown(deviceSN string, period string, startDate str
 
 	query := fmt.Sprintf(`
 		SELECT 
-			to_char(time_bucket('%s', time), '%s') AS period_label,
-			COALESCE(SUM(pv_power_w * (5.0/60.0) / 1000.0), 0.0) as solar_kwh,
-			COALESCE(SUM(load_power_w * (5.0/60.0) / 1000.0), 0.0) as load_kwh,
-			COALESCE(SUM(grid_power_w * (5.0/60.0) / 1000.0), 0.0) as grid_kwh
-		FROM felicity_solar_telemetry
-		WHERE ($1 = '' OR device_sn = $1)
-		  AND ($2 = '' OR time >= $2::timestamp)
-		  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
+			period_label,
+			COALESCE(SUM(pv_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0), 0.0) as solar_kwh,
+			COALESCE(SUM(load_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0), 0.0) as load_kwh,
+			COALESCE(SUM(grid_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0), 0.0) as grid_kwh
+		FROM (
+			SELECT 
+				time,
+				device_sn,
+				to_char(time_bucket('%s', time), '%s') AS period_label,
+				pv_power_w,
+				load_power_w,
+				grid_power_w,
+				LAG(time) OVER (PARTITION BY device_sn ORDER BY time) as prev_time
+			FROM felicity_solar_telemetry
+			WHERE ($1 = '' OR device_sn = $1)
+			  AND ($2 = '' OR time >= $2::timestamp)
+			  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
+		) sub
 		GROUP BY period_label
 		ORDER BY period_label DESC
 		LIMIT %d
