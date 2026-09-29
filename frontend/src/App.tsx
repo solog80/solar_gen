@@ -265,6 +265,7 @@ export const App: React.FC = () => {
       <div className="min-h-screen bg-[#0b0f17] text-gray-100 font-heading">
         <DeviceDetailPage
           device={currentDevice}
+          allDevices={telemetry?.devices || []}
           onBack={() => setSelectedDevice(null)}
         />
       </div>

@@ -8,6 +8,8 @@ import {
   MapPin,
   Clock,
   Layers,
+  ChevronRight,
+  X,
 } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -38,10 +40,11 @@ ChartJS.register(
 
 interface DeviceDetailPageProps {
   device: DeviceItem;
+  allDevices?: DeviceItem[];
   onBack: () => void;
 }
 
-export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, onBack }) => {
+export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, allDevices = [], onBack }) => {
   const [deviceHistory, setDeviceHistory] = useState<HistoryPoint[]>([]);
   const [deviceAnalytics, setDeviceAnalytics] = useState<SavingsAnalytics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -69,15 +72,31 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, onBa
     }
   };
 
+  const [showPvModal, setShowPvModal] = useState(false);
+
   useEffect(() => {
     fetchDeviceHistory();
     fetchDeviceAnalytics();
   }, [device.sn]);
 
   const isBattery = device.type === 'BP';
-  const pvPower = Math.round(device.pv_power_w);
-  const pvVoltage = device.pv_voltage_v || 240;
-  const pvCurrent = device.pv_current_a || (pvVoltage > 0 ? Math.round((pvPower / pvVoltage) * 10) / 10 : 0);
+
+  // Filter all PV contributing charge controllers (Inbuilt Inverter MPPT + External MPPTs)
+  const plantPvDevices = (allDevices.length > 0 ? allDevices : [device]).filter(
+    (d) => d.type !== 'BP' && (d.pv_power_w > 0 || d.type === 'MT' || d.type === 'OG' || d.type === 'INV')
+  );
+
+  const totalPvPower = plantPvDevices.length > 0 
+    ? plantPvDevices.reduce((sum, d) => sum + Math.round(d.pv_power_w || 0), 0)
+    : Math.round(device.pv_power_w || 0);
+
+  const totalPvCurrent = plantPvDevices.length > 0
+    ? Math.round(plantPvDevices.reduce((sum, d) => sum + (d.pv_current_a || 0), 0) * 10) / 10
+    : (device.pv_current_a || 0);
+
+  const avgPvVoltage = plantPvDevices.length > 0
+    ? Math.round(plantPvDevices.reduce((sum, d) => sum + (d.pv_voltage_v || 0), 0) / plantPvDevices.length)
+    : (device.pv_voltage_v || 240);
 
   const loadPower = Math.round(device.load_power_w);
   const loadAmps = device.load_current_a || Math.round((loadPower / 230.0) * 10) / 10;
@@ -318,28 +337,41 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, onBa
       {/* KPI Cards for This Dedicated Location Home */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
         
-        {/* Solar Output */}
-        <div className="glass-card p-6 space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center">
-              <Sun className="w-6 h-6" />
-            </div>
-            <div>
-              <span className="block text-sm font-semibold text-gray-200">Solar PV Power</span>
-              <span className="text-xs text-gray-400">Array Generation</span>
+        {/* Solar Output (Clickable for individual MPPT Breakdown) */}
+        <div
+          onClick={() => setShowPvModal(true)}
+          className="glass-card p-6 space-y-3 cursor-pointer hover:border-amber-500/50 transition group relative overflow-hidden"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center shrink-0 group-hover:scale-110 transition">
+                <Sun className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="block text-sm font-semibold text-gray-200">Solar PV Power</span>
+                <span className="text-xs text-gray-400 flex items-center gap-1">
+                  <span>{plantPvDevices.length > 1 ? `${plantPvDevices.length} Parallel MPPTs` : 'Array Generation'}</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-amber-400 group-hover:translate-x-0.5 transition" />
+                </span>
+              </div>
             </div>
           </div>
-          <div className="font-mono text-3xl font-bold text-amber-400 drop-shadow-[0_0_12px_rgba(245,158,11,0.3)]">
-            {pvPower.toLocaleString()} <span className="text-sm font-sans font-normal text-gray-400">W</span>
+
+          <div className="font-mono text-3xl font-bold text-amber-400 drop-shadow-[0_0_12px_rgba(245,158,11,0.3)] flex items-baseline justify-between">
+            <span>{totalPvPower.toLocaleString()} <span className="text-sm font-sans font-normal text-gray-400">W</span></span>
+            <span className="text-[10px] bg-amber-500/20 border border-amber-500/30 text-amber-300 px-2 py-0.5 rounded-full font-mono">
+              Tap for MPPT breakdown
+            </span>
           </div>
+
           <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-white/5">
             <div>
               <span className="text-gray-400 block text-[10px]">Voltage</span>
-              <span className="font-mono font-semibold">{pvVoltage} V</span>
+              <span className="font-mono font-semibold">{avgPvVoltage} V</span>
             </div>
             <div>
               <span className="text-gray-400 block text-[10px]">Current (Amps)</span>
-              <span className="font-mono font-bold text-amber-300">{pvCurrent} A</span>
+              <span className="font-mono font-bold text-amber-300">{totalPvCurrent} A</span>
             </div>
           </div>
         </div>
@@ -533,6 +565,111 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, onBa
           </div>
         </div>
       </div>
+
+      {/* PV MPPT Breakdown Modal */}
+      {showPvModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#0f172a] border border-amber-500/30 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden text-gray-100 p-6 space-y-5">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center border border-amber-500/20">
+                  <Sun className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-gray-100 flex items-center gap-2">
+                    <span>Solar PV MPPT Contributors</span>
+                    <span className="px-2 py-0.5 text-[10px] rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
+                      Total: {totalPvPower} W
+                    </span>
+                  </h2>
+                  <p className="text-xs text-gray-400">
+                    Location: {device.alias} ({device.plant_name || 'Solo Solar Energy'})
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowPvModal(false)}
+                className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* MPPT Contributors List */}
+            <div className="space-y-3">
+              {plantPvDevices.length === 0 ? (
+                <div className="p-4 text-center text-xs text-gray-400">No active PV generation controllers detected.</div>
+              ) : (
+                plantPvDevices.map((dev) => {
+                  const devPv = Math.round(dev.pv_power_w || 0);
+                  const pct = totalPvPower > 0 ? Math.round((devPv / totalPvPower) * 100) : 0;
+                  const isMppt = dev.type === 'MT' || dev.alias.toLowerCase().includes('mppt');
+
+                  return (
+                    <div key={dev.sn} className="glass-card p-4 space-y-2.5 border border-slate-800 hover:border-amber-500/40 transition">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <Layers className={`w-4 h-4 ${isMppt ? 'text-amber-400' : 'text-emerald-400'}`} />
+                          <div>
+                            <span className="font-bold text-sm text-gray-100">{dev.alias}</span>
+                            <span className="block text-[11px] text-gray-400 font-mono">
+                              Model: {dev.model || 'PV Controller'} ({isMppt ? 'External MPPT' : 'Inbuilt Charge Controller'})
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-right font-mono">
+                          <span className="text-lg font-bold text-amber-400">{devPv} W</span>
+                          <span className="block text-[10px] text-amber-300/80 font-bold">{pct}% of Total</span>
+                        </div>
+                      </div>
+
+                      {/* Percentage Bar */}
+                      <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                        <div
+                          className="bg-gradient-to-r from-amber-500 to-yellow-400 h-full rounded-full transition-all duration-500"
+                          style={{ width: `${Math.max(4, pct)}%` }}
+                        />
+                      </div>
+
+                      {/* PV Parameters */}
+                      <div className="grid grid-cols-3 gap-2 text-xs font-mono pt-1 text-gray-300">
+                        <div>
+                          <span className="block text-[10px] text-gray-500 uppercase">PV Voltage</span>
+                          <span>{dev.pv_voltage_v || 0} V</span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] text-gray-500 uppercase">PV Current</span>
+                          <span>{dev.pv_current_a || 0} A</span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] text-gray-500 uppercase">Serial Number</span>
+                          <span className="text-[10px] text-gray-400 truncate block" title={dev.sn}>
+                            {dev.sn.substring(0, 10)}...
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setShowPvModal(false)}
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-gray-200 text-xs font-semibold"
+              >
+                Close Breakdown
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );
