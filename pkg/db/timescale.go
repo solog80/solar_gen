@@ -370,7 +370,7 @@ func (s *Store) GetAnalytics(deviceSN string, plant string, startDate string, en
 				WHERE ($1 = '' OR device_sn = $1)
 				  AND ($2 = '' OR time >= $2::timestamp)
 				  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
-				  AND ($4 = '' OR alias ILIKE '%' || $4 || '%')
+				  AND ($4 = '' OR (LOWER($4) LIKE '%salt%' AND (alias ILIKE '%mubende%' OR alias ILIKE '%salt%')) OR (LOWER($4) LIKE '%solo%' AND (alias ILIKE '%mutungo%' OR alias ILIKE '%luzira%' OR alias ILIKE '%solo%')) OR (alias ILIKE '%' || $4 || '%'))
 			) inner_sub
 		) sub
 	`
@@ -464,7 +464,7 @@ func (s *Store) GetPeriodBreakdown(deviceSN string, plant string, period string,
 				WHERE ($1 = '' OR device_sn = $1)
 				  AND ($2 = '' OR time >= $2::timestamp)
 				  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
-				  AND ($4 = '' OR alias ILIKE '%' || $4 || '%')
+				  AND ($4 = '' OR (LOWER($4) LIKE '%%salt%%' AND (alias ILIKE '%%mubende%%' OR alias ILIKE '%%salt%%')) OR (LOWER($4) LIKE '%%solo%%' AND (alias ILIKE '%%mutungo%%' OR alias ILIKE '%%luzira%%' OR alias ILIKE '%%solo%%')) OR (alias ILIKE '%%' || $4 || '%%'))
 			) inner_sub
 		) sub
 		GROUP BY period_label
@@ -519,7 +519,7 @@ func (s *Store) Get24HourHistory(deviceSN string, plant string) ([]felicity.Hist
 		LEFT JOIN felicity_solar_telemetry t 
 			ON date_trunc('hour', t.time) = ts.series_time
 		   AND ($1 = '' OR t.device_sn = $1)
-		   AND ($2 = '' OR t.alias ILIKE '%' || $2 || '%')
+		   AND ($2 = '' OR (LOWER($2) LIKE '%salt%' AND (t.alias ILIKE '%mubende%' OR t.alias ILIKE '%salt%')) OR (LOWER($2) LIKE '%solo%' AND (t.alias ILIKE '%mutungo%' OR t.alias ILIKE '%luzira%' OR t.alias ILIKE '%solo%')) OR (t.alias ILIKE '%' || $2 || '%'))
 		GROUP BY ts.series_time
 		ORDER BY ts.series_time ASC
 	`
