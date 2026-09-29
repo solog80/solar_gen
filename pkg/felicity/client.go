@@ -622,11 +622,15 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 				avgLoadFreq = math.Round((sumLF/float64(len(loadFreqList)))*10) / 10
 			}
 
+			netBatPower := (totalPV + totalGridPower) - totalLoad
 			batStatus := "Idle"
-			if totalBatPower < 0 {
+			finalBatPower := 0.0
+			if netBatPower > 10.0 {
 				batStatus = "Charging"
-			} else if totalBatPower > 0 {
+				finalBatPower = -1.0 * math.Round(netBatPower*10) / 10
+			} else if netBatPower < -10.0 {
 				batStatus = "Discharging"
+				finalBatPower = math.Round(math.Abs(netBatPower)*10) / 10
 			}
 
 			var resp TelemetryResponse
@@ -642,7 +646,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 			resp.Solar.CurrentA = math.Round(totalPVCurrent*10) / 10
 
 			resp.Battery.SocPercent = avgSOC
-			resp.Battery.PowerW = math.Round(totalBatPower*10) / 10
+			resp.Battery.PowerW = finalBatPower
 			resp.Battery.VoltageV = avgBatVolt
 			resp.Battery.Status = batStatus
 
@@ -825,7 +829,18 @@ func FilterTelemetryByPlant(t TelemetryResponse, plantFilter string) TelemetryRe
 	t.Solar.PowerW = totalPV
 	t.Load.PowerW = totalLoad
 	t.Grid.PowerW = totalGridPower
-	t.Battery.PowerW = totalBatPower
+
+	netPower := (totalPV + totalGridPower) - totalLoad
+	if netPower > 10.0 {
+		t.Battery.PowerW = -1.0 * math.Round(netPower*10) / 10
+		t.Battery.Status = "Charging"
+	} else if netPower < -10.0 {
+		t.Battery.PowerW = math.Round(math.Abs(netPower)*10) / 10
+		t.Battery.Status = "Discharging"
+	} else {
+		t.Battery.PowerW = 0.0
+		t.Battery.Status = "Idle"
+	}
 
 	if len(socList) > 0 {
 		sumSoc := 0.0
