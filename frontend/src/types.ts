@@ -103,5 +103,6 @@ export interface DashboardUser {
   id: number;
   username: string;
   role: string;
+  allowed_plant?: string;
   created_at?: string;
 }

@@ -5,10 +5,9 @@ import { getApiUrl, getApiBaseUrl, setApiBaseUrl } from '../apiConfig';
 
 interface LoginModalProps {
   onLoginSuccess: (user: DashboardUser, token: string) => void;
-  onSkipLogin?: () => void;
 }
 
-export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess, onSkipLogin }) => {
+export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +112,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess, onSkipLo
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. solo or admin"
+                placeholder="e.g. solo or saltmedia"
                 className="w-full bg-slate-900 border border-slate-700/80 rounded-xl py-2.5 pl-10 pr-4 text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
               />
             </div>
@@ -147,16 +146,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess, onSkipLo
               </>
             )}
           </button>
-
-          {onSkipLogin && (
-            <button
-              type="button"
-              onClick={onSkipLogin}
-              className="w-full py-2.5 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 text-gray-300 font-semibold text-xs transition flex items-center justify-center gap-2"
-            >
-              <span>Skip Login & Enter Dashboard</span>
-            </button>
-          )}
         </form>
 
         {/* Quick Demo Credentials */}
@@ -176,11 +165,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess, onSkipLo
             </button>
 
             <button
-              onClick={() => handleQuickFill('admin', 'admin123')}
+              onClick={() => handleQuickFill('saltmedia', 'saltmedia2026')}
               className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 text-cyan-300 text-center transition"
             >
-              <div className="font-bold">admin</div>
-              <div className="text-gray-400 text-[9px]">Admin</div>
+              <div className="font-bold">saltmedia</div>
+              <div className="text-gray-400 text-[9px]">Salt Media</div>
             </button>
 
             <button

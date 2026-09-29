@@ -178,10 +178,15 @@ export const App: React.FC = () => {
     localStorage.removeItem('dash_token');
   };
 
+  const getPlantQueryParam = () => {
+    return currentUser?.allowed_plant ? `?plant=${encodeURIComponent(currentUser.allowed_plant)}` : '';
+  };
+
   const fetchTelemetry = async () => {
     try {
       setIsRefreshing(true);
-      const res = await fetch(getApiUrl('/api/status'));
+      const query = getPlantQueryParam();
+      const res = await fetch(getApiUrl(`/api/status${query}`));
       const contentType = res.headers.get('content-type') || '';
       if (res.ok && contentType.includes('application/json')) {
         const data: TelemetryResponse = await res.json();
@@ -198,7 +203,8 @@ export const App: React.FC = () => {
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch(getApiUrl('/api/history'));
+      const query = getPlantQueryParam();
+      const res = await fetch(getApiUrl(`/api/history${query}`));
       const contentType = res.headers.get('content-type') || '';
       if (res.ok && contentType.includes('application/json')) {
         const data: HistoryPoint[] = await res.json();
@@ -213,7 +219,8 @@ export const App: React.FC = () => {
 
   const fetchAnalytics = async () => {
     try {
-      const res = await fetch(getApiUrl('/api/analytics'));
+      const query = getPlantQueryParam();
+      const res = await fetch(getApiUrl(`/api/analytics${query}`));
       const contentType = res.headers.get('content-type') || '';
       if (res.ok && contentType.includes('application/json')) {
         const data: SavingsAnalytics = await res.json();
@@ -237,14 +244,13 @@ export const App: React.FC = () => {
       fetchAnalytics();
     }, 10000);
     return () => clearInterval(interval);
-  }, [token]);
+  }, [token, currentUser?.allowed_plant]);
 
   // Auth Guard: Require Login if not authenticated
   if (!token || !currentUser) {
     return (
       <LoginModal
         onLoginSuccess={handleLoginSuccess}
-        onSkipLogin={() => handleLoginSuccess({ id: 1, username: 'solo', role: 'admin' }, 'guest_session')}
       />
     );
   }

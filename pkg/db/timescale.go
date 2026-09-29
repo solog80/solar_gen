@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -64,6 +65,7 @@ type DashboardUser struct {
 	Username     string    `json:"username"`
 	PasswordHash string    `json:"-"`
 	Role         string    `json:"role"`
+	AllowedPlant string    `json:"allowed_plant"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
@@ -90,24 +92,23 @@ func (s *Store) InitSchema() {
 		username TEXT UNIQUE NOT NULL,
 		password_hash TEXT NOT NULL,
 		role TEXT DEFAULT 'viewer',
+		allowed_plant TEXT DEFAULT '',
 		created_at TIMESTAMPTZ DEFAULT NOW()
 	);
+	ALTER TABLE dashboard_users ADD COLUMN IF NOT EXISTS allowed_plant TEXT DEFAULT '';
 	`
 	_, _ = s.db.Exec(query)
 
-	// Seed default admin accounts if no users exist
-	var count int
-	_ = s.db.QueryRow("SELECT COUNT(*) FROM dashboard_users").Scan(&count)
-	if count == 0 {
-		log.Println("[TimescaleDB] Seeding default dashboard users (admin, solo, viewer)...")
-		_, _ = s.db.Exec(`
-			INSERT INTO dashboard_users (username, password_hash, role) VALUES 
-			('admin', 'admin123', 'admin'),
-			('solo', 'solo2026', 'admin'),
-			('viewer', 'viewer123', 'viewer')
-			ON CONFLICT (username) DO NOTHING;
-		`)
-	}
+	// Seed default admin and plant-restricted accounts
+	log.Println("[TimescaleDB] Seeding default dashboard users (solo, viewer, saltmedia)...")
+	_, _ = s.db.Exec(`
+		DELETE FROM dashboard_users WHERE username = 'admin';
+		INSERT INTO dashboard_users (username, password_hash, role, allowed_plant) VALUES 
+		('solo', 'solo2026', 'admin', ''),
+		('viewer', 'viewer123', 'viewer', ''),
+		('saltmedia', 'saltmedia2026', 'viewer', 'Salt Media')
+		ON CONFLICT (username) DO UPDATE SET allowed_plant = EXCLUDED.allowed_plant;
+	`)
 }
 
 func (s *Store) AuthenticateDashboardUser(username, password string) (*DashboardUser, error) {
@@ -115,8 +116,8 @@ func (s *Store) AuthenticateDashboardUser(username, password string) (*Dashboard
 		return nil, fmt.Errorf("database not connected")
 	}
 	var u DashboardUser
-	err := s.db.QueryRow("SELECT id, username, password_hash, role, created_at FROM dashboard_users WHERE username = $1", username).
-		Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt)
+	err := s.db.QueryRow("SELECT id, username, password_hash, role, COALESCE(allowed_plant, ''), created_at FROM dashboard_users WHERE username = $1", username).
+		Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.AllowedPlant, &u.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("invalid username or password")
 	}
@@ -128,7 +129,7 @@ func (s *Store) AuthenticateDashboardUser(username, password string) (*Dashboard
 	return &u, nil
 }
 
-func (s *Store) CreateDashboardUser(username, password, role string) (*DashboardUser, error) {
+func (s *Store) CreateDashboardUser(username, password, role, allowedPlant string) (*DashboardUser, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("database not connected")
 	}
@@ -137,10 +138,10 @@ func (s *Store) CreateDashboardUser(username, password, role string) (*Dashboard
 	}
 	var u DashboardUser
 	err := s.db.QueryRow(`
-		INSERT INTO dashboard_users (username, password_hash, role)
-		VALUES ($1, $2, $3)
-		RETURNING id, username, role, created_at
-	`, username, password, role).Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt)
+		INSERT INTO dashboard_users (username, password_hash, role, allowed_plant)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, username, role, COALESCE(allowed_plant, ''), created_at
+	`, username, password, role, allowedPlant).Scan(&u.ID, &u.Username, &u.Role, &u.AllowedPlant, &u.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("user creation failed: %v", err)
 	}
@@ -152,7 +153,7 @@ func (s *Store) ListDashboardUsers() ([]DashboardUser, error) {
 	if s.db == nil {
 		return users, fmt.Errorf("database not connected")
 	}
-	rows, err := s.db.Query("SELECT id, username, role, created_at FROM dashboard_users ORDER BY id ASC")
+	rows, err := s.db.Query("SELECT id, username, role, COALESCE(allowed_plant, ''), created_at FROM dashboard_users ORDER BY id ASC")
 	if err != nil {
 		return users, err
 	}
@@ -160,7 +161,7 @@ func (s *Store) ListDashboardUsers() ([]DashboardUser, error) {
 
 	for rows.Next() {
 		var u DashboardUser
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt); err == nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.AllowedPlant, &u.CreatedAt); err == nil {
 			users = append(users, u)
 		}
 	}
@@ -224,8 +225,14 @@ func (s *Store) SaveTelemetry(t felicity.TelemetryResponse) error {
 }
 
 func (s *Store) BackfillHistory(days int) (int, error) {
-	if s.db == nil || s.client == nil || !s.client.IsAuthenticated() {
-		return 0, fmt.Errorf("client not authenticated or database disconnected")
+	if s.db == nil || s.client == nil {
+		return 0, fmt.Errorf("database disconnected or client unavailable")
+	}
+
+	if !s.client.IsAuthenticated() {
+		if !s.client.Login("", "") {
+			return 0, fmt.Errorf("client login failed for backfill")
+		}
 	}
 
 	devices := s.client.FetchDevices()
@@ -249,6 +256,14 @@ func (s *Store) BackfillHistory(days int) (int, error) {
 
 		for d := 0; d < days; d++ {
 			dateStr := now.AddDate(0, 0, -d).Format("2006-01-02")
+
+			// Mubende devices were installed on Sep 27, 2026 - skip backfilling prior dates
+			if strings.HasPrefix(alias, "Mubende") || sn == "010310004825430201" || sn == "050612004825250620" || sn == "074604850026170116" || sn == "074604850026170118" {
+				if dateStr < "2026-09-27" {
+					continue
+				}
+			}
+
 			snap := s.client.FetchDeviceSnapshotForDate(sn, dateStr)
 			if snap == nil {
 				continue
@@ -262,11 +277,26 @@ func (s *Store) BackfillHistory(days int) (int, error) {
 
 			if v, ok := snap["pvTotalPower"]; ok && v != nil {
 				pv = felicityParseFloat(v)
+			} else if v, ok := snap["pvPower"]; ok && v != nil {
+				pv = felicityParseFloat(v)
 			}
+
 			if v, ok := snap["acTotalOutActPower"]; ok && v != nil {
 				load = felicityParseFloat(v)
+			} else if v, ok := snap["acROutPower"]; ok && v != nil {
+				load = felicityParseFloat(v)
 			}
-			if v, ok := snap["emsVoltage"]; ok && v != nil {
+
+			if v, ok := snap["battSoc"]; ok && v != nil && felicityParseFloat(v) > 1 {
+				soc = felicityParseFloat(v)
+			} else if v, ok := snap["emsSoc"]; ok && v != nil && felicityParseFloat(v) > 1 {
+				soc = felicityParseFloat(v)
+			} else if v, ok := snap["emsSocAvg"]; ok && v != nil && felicityParseFloat(v) > 1 {
+				soc = felicityParseFloat(v)
+			} else if v, ok := snap["emsVoltage"]; ok && v != nil {
+				batVolt = felicityParseFloat(v)
+				soc = felicity.CalculateSOCFromVoltage(batVolt)
+			} else if v, ok := snap["battery_voltage_v"]; ok && v != nil {
 				batVolt = felicityParseFloat(v)
 				soc = felicity.CalculateSOCFromVoltage(batVolt)
 			}
@@ -282,12 +312,14 @@ func (s *Store) BackfillHistory(days int) (int, error) {
 				}
 				loadH := math.Round((load* (0.8 + 0.4*math.Sin(float64(h)/3.0)))*10) / 10
 				socH := math.Max(15.0, math.Min(100.0, math.Round((soc + 3.0*math.Sin(float64(h-7)/4.0))*10)/10))
+				batPowerH := math.Round((loadH - pvH)*10) / 10
 
 				_, err := s.db.Exec(`
 					INSERT INTO felicity_solar_telemetry (time, device_sn, alias, pv_power_w, load_power_w, battery_soc, battery_power_w, grid_power_w)
 					VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-					ON CONFLICT (time, device_sn) DO NOTHING
-				`, tPoint, sn, alias, pvH, loadH, socH, 0.0, grid)
+					ON CONFLICT (time, device_sn) DO UPDATE SET 
+						battery_power_w = CASE WHEN felicity_solar_telemetry.battery_power_w = 0 THEN EXCLUDED.battery_power_w ELSE felicity_solar_telemetry.battery_power_w END
+				`, tPoint, sn, alias, pvH, loadH, socH, batPowerH, grid)
 				if err == nil {
 					totalInserted++
 				}
@@ -299,7 +331,7 @@ func (s *Store) BackfillHistory(days int) (int, error) {
 	return totalInserted, nil
 }
 
-func (s *Store) GetAnalytics(deviceSN string, startDate string, endDate string) (SavingsAnalytics, error) {
+func (s *Store) GetAnalytics(deviceSN string, plant string, startDate string, endDate string) (SavingsAnalytics, error) {
 	var a SavingsAnalytics
 	if s.db == nil {
 		return a, fmt.Errorf("database not connected")
@@ -307,9 +339,10 @@ func (s *Store) GetAnalytics(deviceSN string, startDate string, endDate string) 
 
 	query := `
 		SELECT 
-			COALESCE(SUM(pv_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0), 0.0) as solar_kwh,
-			COALESCE(SUM(load_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0), 0.0) as load_kwh,
-			COALESCE(SUM(grid_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0), 0.0) as grid_kwh,
+			COALESCE(SUM(solar_kwh), 0.0) as solar_kwh,
+			COALESCE(SUM(load_kwh), 0.0) as load_kwh,
+			COALESCE(SUM(grid_kwh), 0.0) as grid_kwh,
+			COALESCE(SUM(solar_kwh * tou_rate), 0.0) as savings_ugx,
 			COUNT(*) as cnt,
 			COALESCE(MIN(time)::text, '') as earliest,
 			COALESCE(MAX(time)::text, '') as latest
@@ -317,19 +350,33 @@ func (s *Store) GetAnalytics(deviceSN string, startDate string, endDate string) 
 			SELECT 
 				time,
 				device_sn,
-				pv_power_w,
-				load_power_w,
-				grid_power_w,
-				LAG(time) OVER (PARTITION BY device_sn ORDER BY time) as prev_time
-			FROM felicity_solar_telemetry
-			WHERE ($1 = '' OR device_sn = $1)
-			  AND ($2 = '' OR time >= $2::timestamp)
-			  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
+				(pv_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0) as solar_kwh,
+				(load_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0) as load_kwh,
+				(grid_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0) as grid_kwh,
+				CASE 
+					WHEN EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= 18 THEN 650.50
+					WHEN EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= 6 THEN 546.00
+					ELSE 414.00
+				END as tou_rate
+			FROM (
+				SELECT 
+					time,
+					device_sn,
+					pv_power_w,
+					load_power_w,
+					grid_power_w,
+					LAG(time) OVER (PARTITION BY device_sn ORDER BY time) as prev_time
+				FROM felicity_solar_telemetry
+				WHERE ($1 = '' OR device_sn = $1)
+				  AND ($2 = '' OR time >= $2::timestamp)
+				  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
+				  AND ($4 = '' OR alias ILIKE '%' || $4 || '%')
+			) inner_sub
 		) sub
 	`
 
-	row := s.db.QueryRow(query, deviceSN, startDate, endDate)
-	err := row.Scan(&a.TotalSolarKWh, &a.TotalLoadKWh, &a.TotalGridKWh, &a.RecordCount, &a.EarliestRecord, &a.LatestRecord)
+	row := s.db.QueryRow(query, deviceSN, startDate, endDate, plant)
+	err := row.Scan(&a.TotalSolarKWh, &a.TotalLoadKWh, &a.TotalGridKWh, &a.TotalSavingsUGX, &a.RecordCount, &a.EarliestRecord, &a.LatestRecord)
 	if err != nil {
 		return a, err
 	}
@@ -338,11 +385,9 @@ func (s *Store) GetAnalytics(deviceSN string, startDate string, endDate string) 
 	a.TotalLoadKWh = math.Round(a.TotalLoadKWh*100) / 100
 	a.TotalGridKWh = math.Round(a.TotalGridKWh*100) / 100
 
-	// Umeme Uganda average tariff rate: ~890 UGX / kWh ($0.24 USD)
-	const TariffUGXPerKWh = 890.0
 	const UGXToUSD = 3700.0
 
-	a.TotalSavingsUGX = math.Round(a.TotalSolarKWh * TariffUGXPerKWh)
+	a.TotalSavingsUGX = math.Round(a.TotalSavingsUGX)
 	a.TotalSavingsUSD = math.Round((a.TotalSavingsUGX / UGXToUSD) * 100) / 100
 
 	if a.TotalLoadKWh > 0 {
@@ -356,7 +401,7 @@ func (s *Store) GetAnalytics(deviceSN string, startDate string, endDate string) 
 	return a, nil
 }
 
-func (s *Store) GetPeriodBreakdown(deviceSN string, period string, startDate string, endDate string) (felicity.PeriodBreakdownResponse, error) {
+func (s *Store) GetPeriodBreakdown(deviceSN string, plant string, period string, startDate string, endDate string) (felicity.PeriodBreakdownResponse, error) {
 	resp := felicity.PeriodBreakdownResponse{
 		DeviceSN: deviceSN,
 		Period:   period,
@@ -390,44 +435,58 @@ func (s *Store) GetPeriodBreakdown(deviceSN string, period string, startDate str
 	query := fmt.Sprintf(`
 		SELECT 
 			period_label,
-			COALESCE(SUM(pv_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0), 0.0) as solar_kwh,
-			COALESCE(SUM(load_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0), 0.0) as load_kwh,
-			COALESCE(SUM(grid_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0), 0.0) as grid_kwh
+			COALESCE(SUM(solar_kwh), 0.0) as solar_kwh,
+			COALESCE(SUM(load_kwh), 0.0) as load_kwh,
+			COALESCE(SUM(grid_kwh), 0.0) as grid_kwh,
+			COALESCE(SUM(solar_kwh * tou_rate), 0.0) as savings_ugx
 		FROM (
 			SELECT 
 				time,
 				device_sn,
 				to_char(time_bucket('%s', time), '%s') AS period_label,
-				pv_power_w,
-				load_power_w,
-				grid_power_w,
-				LAG(time) OVER (PARTITION BY device_sn ORDER BY time) as prev_time
-			FROM felicity_solar_telemetry
-			WHERE ($1 = '' OR device_sn = $1)
-			  AND ($2 = '' OR time >= $2::timestamp)
-			  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
+				(pv_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0) as solar_kwh,
+				(load_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0) as load_kwh,
+				(grid_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0) as grid_kwh,
+				CASE 
+					WHEN EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= 18 THEN 650.50
+					WHEN EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= 6 THEN 546.00
+					ELSE 414.00
+				END as tou_rate
+			FROM (
+				SELECT 
+					time,
+					device_sn,
+					pv_power_w,
+					load_power_w,
+					grid_power_w,
+					LAG(time) OVER (PARTITION BY device_sn ORDER BY time) as prev_time
+				FROM felicity_solar_telemetry
+				WHERE ($1 = '' OR device_sn = $1)
+				  AND ($2 = '' OR time >= $2::timestamp)
+				  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
+				  AND ($4 = '' OR alias ILIKE '%' || $4 || '%')
+			) inner_sub
 		) sub
 		GROUP BY period_label
 		ORDER BY period_label DESC
 		LIMIT %d
 	`, bucketInterval, formatStr, limitVal)
 
-	rows, err := s.db.Query(query, deviceSN, startDate, endDate)
+	rows, err := s.db.Query(query, deviceSN, startDate, endDate, plant)
 	if err != nil {
 		return resp, err
 	}
 	defer rows.Close()
 
-	const TariffUGXPerKWh = 890.0
 	const UGXToUSD = 3700.0
 
 	for rows.Next() {
 		var item felicity.PeriodItem
-		if err := rows.Scan(&item.PeriodLabel, &item.SolarKWh, &item.LoadKWh, &item.GridKWh); err == nil {
+		if err := rows.Scan(&item.PeriodLabel, &item.SolarKWh, &item.LoadKWh, &item.GridKWh, &item.SavingsUGX); err == nil {
 			item.SolarKWh = math.Round(item.SolarKWh*100) / 100
 			item.LoadKWh = math.Round(item.LoadKWh*100) / 100
 			item.GridKWh = math.Round(item.GridKWh*100) / 100
-			item.SavingsUGX = math.Round(item.SolarKWh * TariffUGXPerKWh)
+			item.SavingsUGX = math.Round(item.SavingsUGX)
 			item.SavingsUSD = math.Round((item.SavingsUGX / UGXToUSD) * 100) / 100
 			resp.Items = append(resp.Items, item)
 		}
@@ -436,33 +495,36 @@ func (s *Store) GetPeriodBreakdown(deviceSN string, period string, startDate str
 	return resp, nil
 }
 
-func (s *Store) Get24HourHistory(deviceSN string) ([]felicity.HistoryPoint, error) {
+func (s *Store) Get24HourHistory(deviceSN string, plant string) ([]felicity.HistoryPoint, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("database not connected")
 	}
 
 	query := `
+		WITH time_series AS (
+			SELECT generate_series(
+				date_trunc('hour', NOW() - INTERVAL '23 hours'),
+				date_trunc('hour', NOW()),
+				INTERVAL '1 hour'
+			) AS series_time
+		)
 		SELECT 
-			to_char(tb + INTERVAL '3 hours', 'HH24:00') AS hour_label,
-			COALESCE(AVG(pv_power_w), 0.0) as pv_power,
-			COALESCE(AVG(load_power_w), 0.0) as load_power,
-			COALESCE(AVG(battery_soc), 0.0) as battery_soc,
-			COALESCE(AVG(battery_power_w), 0.0) as battery_power,
-			COALESCE(AVG(grid_power_w), 0.0) as grid_power
-		FROM (
-			SELECT time_bucket('1 hour', time) AS tb,
-			       pv_power_w, load_power_w, battery_soc, battery_power_w, grid_power_w
-			FROM felicity_solar_telemetry
-			WHERE ($1 = '' OR device_sn = $1)
-			  AND time >= NOW() - INTERVAL '24 hours'
-			  AND time <= NOW()
-		) sub
-		GROUP BY tb
-		ORDER BY tb ASC
-		LIMIT 25
+			to_char(ts.series_time + INTERVAL '3 hours', 'HH24:00') AS hour_label,
+			COALESCE(AVG(t.pv_power_w), 0.0) as pv_power,
+			COALESCE(AVG(t.load_power_w), 0.0) as load_power,
+			COALESCE(AVG(t.battery_soc), 0.0) as battery_soc,
+			COALESCE(AVG(t.battery_power_w), 0.0) as battery_power,
+			COALESCE(AVG(t.grid_power_w), 0.0) as grid_power
+		FROM time_series ts
+		LEFT JOIN felicity_solar_telemetry t 
+			ON date_trunc('hour', t.time) = ts.series_time
+		   AND ($1 = '' OR t.device_sn = $1)
+		   AND ($2 = '' OR t.alias ILIKE '%' || $2 || '%')
+		GROUP BY ts.series_time
+		ORDER BY ts.series_time ASC
 	`
 
-	rows, err := s.db.Query(query, deviceSN)
+	rows, err := s.db.Query(query, deviceSN, plant)
 	if err != nil {
 		return nil, err
 	}

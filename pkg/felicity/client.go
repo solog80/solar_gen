@@ -429,19 +429,17 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 						devBatVolt = parseFloat(v)
 					}
 
-					// Parse Battery SOC or calculate from emsVoltage
-					if v, ok := snap["battSoc"]; ok && v != nil {
+					// Parse Battery SOC directly from raw telemetry (battSoc, emsSoc, emsSocAvg)
+					if v, ok := snap["battSoc"]; ok && v != nil && parseFloat(v) > 1 {
 						devSoc = parseFloat(v)
 					} else if v, ok := snap["emsSoc"]; ok && v != nil && parseFloat(v) > 1 {
 						devSoc = parseFloat(v)
+					} else if v, ok := snap["emsSocAvg"]; ok && v != nil && parseFloat(v) > 1 {
+						devSoc = parseFloat(v)
 					}
 
-					isDisconnected := false
-					if v, ok := snap["bmsFlagStr"]; ok && v != nil && v.(string) == "Disconnected" {
-						isDisconnected = true
-					}
-
-					if (devSoc <= 1.0 || isDisconnected) && devBatVolt > 0 {
+					// Fallback calculation from voltage ONLY if no valid BMS SOC is present (> 1.0)
+					if devSoc <= 1.0 && devBatVolt > 0 {
 						devSoc = math.Round(CalculateSOCFromVoltage(devBatVolt)*10) / 10
 					}
 
@@ -788,4 +786,54 @@ func parseFloat(v interface{}) float64 {
 		return f
 	}
 	return 0.0
+}
+
+func FilterTelemetryByPlant(t TelemetryResponse, plantFilter string) TelemetryResponse {
+	if plantFilter == "" || strings.EqualFold(plantFilter, "all") {
+		return t
+	}
+
+	var filtered []DeviceItem
+	totalPV := 0.0
+	totalLoad := 0.0
+	totalBatPower := 0.0
+	totalGridPower := 0.0
+	var socList []float64
+
+	for _, dev := range t.Devices {
+		if strings.EqualFold(dev.PlantName, plantFilter) || 
+		   strings.Contains(strings.ToLower(dev.PlantName), strings.ToLower(plantFilter)) ||
+		   strings.Contains(strings.ToLower(dev.Alias), strings.ToLower(plantFilter)) {
+			filtered = append(filtered, dev)
+			totalPV += dev.PvPowerW
+			totalLoad += dev.LoadPowerW
+			totalBatPower += dev.BatteryPowerW
+			totalGridPower += dev.GridPowerW
+			if dev.BatterySoc > 0 {
+				socList = append(socList, dev.BatterySoc)
+			}
+		}
+	}
+
+	if len(filtered) == 0 {
+		return t
+	}
+
+	t.Devices = filtered
+	t.PlantInfo.Name = plantFilter
+	t.PlantInfo.TotalDevices = len(filtered)
+	t.Solar.PowerW = totalPV
+	t.Load.PowerW = totalLoad
+	t.Grid.PowerW = totalGridPower
+	t.Battery.PowerW = totalBatPower
+
+	if len(socList) > 0 {
+		sumSoc := 0.0
+		for _, s := range socList {
+			sumSoc += s
+		}
+		t.Battery.SocPercent = math.Round((sumSoc/float64(len(socList)))*10) / 10
+	}
+
+	return t
 }

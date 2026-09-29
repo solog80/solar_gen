@@ -16,6 +16,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<'admin' | 'viewer'>('viewer');
+  const [newAllowedPlant, setNewAllowedPlant] = useState<string>('');
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -53,6 +54,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
           username: newUsername,
           password: newPassword,
           role: newRole,
+          allowed_plant: newAllowedPlant,
         }),
       });
       const data = await res.json();
@@ -60,6 +62,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
         setMsg(`User "${newUsername}" created successfully!`);
         setNewUsername('');
         setNewPassword('');
+        setNewAllowedPlant('');
         fetchUsers();
       } else {
         setMsg(data.message || 'Failed to create user');
@@ -119,7 +122,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
             <span>Create New User Account</span>
           </h3>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <input
               type="text"
               placeholder="Username"
@@ -142,6 +145,15 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
               <option value="viewer">Viewer (Read Only)</option>
               <option value="admin">Admin (Full Access)</option>
             </select>
+            <select
+              value={newAllowedPlant}
+              onChange={(e) => setNewAllowedPlant(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-gray-100 focus:outline-none focus:border-emerald-500"
+            >
+              <option value="">All Plants (Unrestricted)</option>
+              <option value="Salt Media">Salt Media (Mubende)</option>
+              <option value="Solo Solar Energy">Solo Solar Energy (Mutungo)</option>
+            </select>
           </div>
 
           <button
@@ -162,6 +174,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                 <tr>
                   <th className="px-4 py-2.5">User</th>
                   <th className="px-4 py-2.5">Role</th>
+                  <th className="px-4 py-2.5">Allowed Plant</th>
                   <th className="px-4 py-2.5 text-right">Actions</th>
                 </tr>
               </thead>
@@ -181,8 +194,17 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                         {u.role}
                       </span>
                     </td>
+                    <td className="px-4 py-2.5 text-gray-300">
+                      {u.allowed_plant ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] bg-purple-500/10 text-purple-300 border border-purple-500/20 font-semibold">
+                          {u.allowed_plant}
+                        </span>
+                      ) : (
+                        <span className="text-gray-500 text-[10px]">All Plants</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-right">
-                      {u.username !== 'admin' && u.username !== 'solo' && (
+                      {u.username !== 'solo' && (
                         <button
                           onClick={() => handleDeleteUser(u.id, u.username)}
                           className="p-1.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 transition"

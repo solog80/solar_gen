@@ -74,11 +74,28 @@ func main() {
 		// Run initial 30-day historical backfill asynchronously
 		go func() {
 			time.Sleep(3 * time.Second)
-			if client.IsAuthenticated() {
-				_, _ = dbStore.BackfillHistory(30)
+			if client.IsAuthenticated() || client.Login("", "") {
+				_, err := dbStore.BackfillHistory(30)
+				if err != nil {
+					log.Printf("[TimescaleDB] Startup backfill error: %v", err)
+				}
 			}
 		}()
 	}
+
+	// 24/7 Background Telemetry Poller (saves to TimescaleDB every 1 minute)
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			if client.IsAuthenticated() || client.Login("", "") {
+				telemetry := client.GetTelemetry()
+				if dbStore != nil && telemetry.IsLive {
+					_ = dbStore.SaveTelemetry(telemetry)
+				}
+			}
+		}
+	}()
 
 	mux := http.NewServeMux()
 
@@ -132,6 +149,11 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		_ = dbStore.SaveTelemetry(telemetry)
 	}
 
+	plant := r.URL.Query().Get("plant")
+	if plant != "" {
+		telemetry = felicity.FilterTelemetryByPlant(telemetry, plant)
+	}
+
 	_ = json.NewEncoder(w).Encode(telemetry)
 }
 
@@ -139,9 +161,10 @@ func handleAnalytics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if dbStore != nil {
 		deviceSN := r.URL.Query().Get("sn")
+		plant := r.URL.Query().Get("plant")
 		startDate := r.URL.Query().Get("start_date")
 		endDate := r.URL.Query().Get("end_date")
-		analytics, err := dbStore.GetAnalytics(deviceSN, startDate, endDate)
+		analytics, err := dbStore.GetAnalytics(deviceSN, plant, startDate, endDate)
 		if err == nil {
 			_ = json.NewEncoder(w).Encode(analytics)
 			return
@@ -167,10 +190,11 @@ func handleBreakdown(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if dbStore != nil {
 		deviceSN := r.URL.Query().Get("sn")
+		plant := r.URL.Query().Get("plant")
 		period := r.URL.Query().Get("period")
 		startDate := r.URL.Query().Get("start_date")
 		endDate := r.URL.Query().Get("end_date")
-		breakdown, err := dbStore.GetPeriodBreakdown(deviceSN, period, startDate, endDate)
+		breakdown, err := dbStore.GetPeriodBreakdown(deviceSN, plant, period, startDate, endDate)
 		if err == nil {
 			_ = json.NewEncoder(w).Encode(breakdown)
 			return
@@ -263,11 +287,13 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	deviceSN := r.URL.Query().Get("sn")
+	plant := r.URL.Query().Get("plant")
 	w.Header().Set("Content-Type", "application/json")
 
 	var history []felicity.HistoryPoint
 	if dbStore != nil {
-		h, err := dbStore.Get24HourHistory("")
+		h, err := dbStore.Get24HourHistory(deviceSN, plant)
 		if err == nil && len(h) > 0 {
 			history = h
 		}
@@ -275,6 +301,9 @@ func handleHistory(w http.ResponseWriter, r *http.Request) {
 
 	// Always append/update latest point with live telemetry
 	live := client.GetTelemetry()
+	if plant != "" {
+		live = felicity.FilterTelemetryByPlant(live, plant)
+	}
 	livePoint := felicity.HistoryPoint{
 		Time:          time.Now().In(felicity.EATLocation).Format("15:04"),
 		PvPower:       live.Solar.PowerW,
@@ -300,11 +329,12 @@ func handleDeviceHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	deviceSN := r.URL.Query().Get("sn")
+	plant := r.URL.Query().Get("plant")
 	w.Header().Set("Content-Type", "application/json")
 
 	var history []felicity.HistoryPoint
 	if dbStore != nil {
-		h, err := dbStore.Get24HourHistory(deviceSN)
+		h, err := dbStore.Get24HourHistory(deviceSN, plant)
 		if err == nil && len(h) > 0 {
 			history = h
 		}
@@ -406,16 +436,17 @@ func handleAuthUsers(w http.ResponseWriter, r *http.Request) {
 
 	case "POST":
 		var payload struct {
-			Username string `json:"username"`
-			Password string `json:"password"`
-			Role     string `json:"role"`
+			Username     string `json:"username"`
+			Password     string `json:"password"`
+			Role         string `json:"role"`
+			AllowedPlant string `json:"allowed_plant"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "message": "Invalid request body"})
 			return
 		}
-		user, err := dbStore.CreateDashboardUser(payload.Username, payload.Password, payload.Role)
+		user, err := dbStore.CreateDashboardUser(payload.Username, payload.Password, payload.Role, payload.AllowedPlant)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "message": err.Error()})
