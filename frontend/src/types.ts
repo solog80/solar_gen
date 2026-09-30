@@ -24,6 +24,15 @@ export interface DeviceItem {
   plant_name: string;
   plant_id: string;
   id: string;
+  cell_voltages?: number[];
+  cell_temperatures?: number[];
+  max_cell_voltage_mv?: number;
+  min_cell_voltage_mv?: number;
+  max_cell_num?: number;
+  min_cell_num?: number;
+  soh_percent?: number;
+  remaining_kwh?: number;
+  heat_status?: string;
 }
 
 export interface TelemetryResponse {

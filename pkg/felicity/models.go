@@ -80,9 +80,18 @@ type DeviceItem struct {
 	GridVoltageV    float64 `json:"grid_voltage_v"`
 	CollectorSN     string  `json:"collector_sn"`
 	FirmwareVersion string  `json:"firmware_version"`
-	PlantName       string  `json:"plant_name"`
-	PlantID         string  `json:"plant_id"`
-	ID              string  `json:"id"`
+	PlantName       string    `json:"plant_name"`
+	PlantID         string    `json:"plant_id"`
+	ID              string    `json:"id"`
+	CellVoltages    []float64 `json:"cell_voltages,omitempty"`
+	CellTemps       []float64 `json:"cell_temperatures,omitempty"`
+	MaxCellVoltMV   float64   `json:"max_cell_voltage_mv,omitempty"`
+	MinCellVoltMV   float64   `json:"min_cell_voltage_mv,omitempty"`
+	MaxCellNum      int       `json:"max_cell_num,omitempty"`
+	MinCellNum      int       `json:"min_cell_num,omitempty"`
+	SOHPercent      float64   `json:"soh_percent,omitempty"`
+	RemainingKWh    float64   `json:"remaining_kwh,omitempty"`
+	HeatStatus      string    `json:"heat_status,omitempty"`
 }
 
 // TelemetryResponse returned by /api/status.

@@ -111,6 +111,37 @@ export const DeviceModal: React.FC<DeviceModalProps> = ({ device, onClose }) => 
           </table>
         </div>
 
+        {/* BMS Telemetry Breakdown for Battery Packs */}
+        {(device.cell_voltages || device.cell_temperatures || isBattery) && (
+          <div className="pt-2 border-t border-white/10 space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+              <Battery className="w-4 h-4 text-emerald-400" />
+              <span>BMS Telemetry & Cell Voltages</span>
+            </h4>
+
+            {device.cell_voltages && device.cell_voltages.length > 0 && (
+              <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5 font-mono text-[11px]">
+                {device.cell_voltages.map((v, i) => (
+                  <div key={i} className="p-1.5 rounded bg-white/5 border border-white/10 text-center">
+                    <span className="text-[9px] text-gray-400 block">#{i + 1}</span>
+                    <span className="font-bold text-emerald-300">{v.toFixed(3)}V</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {device.cell_temperatures && device.cell_temperatures.length > 0 && (
+              <div className="flex flex-wrap gap-2 text-xs font-mono">
+                {device.cell_temperatures.map((t, i) => (
+                  <span key={i} className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                    Temp #{i + 1}: {t}°C
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex justify-end pt-2">
           <button
             onClick={onClose}

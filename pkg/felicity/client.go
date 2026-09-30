@@ -511,37 +511,107 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 						devTemp = parseFloat(v)
 					}
 
+					// Parse BMS Cell Telemetry for Battery Packs & Systems
+					var cellVolts []float64
+					for i := 1; i <= 16; i++ {
+						key := "cellVolt" + strconv.Itoa(i)
+						if v, ok := snap[key]; ok && v != nil {
+							mv := parseFloat(v)
+							if mv > 0 {
+								valV := mv
+								if mv > 100 {
+									valV = math.Round((mv/1000.0)*1000) / 1000.0
+								}
+								cellVolts = append(cellVolts, valV)
+							}
+						}
+					}
+
+					var cellTemps []float64
+					for i := 1; i <= 4; i++ {
+						key := "cellTemp" + strconv.Itoa(i)
+						if v, ok := snap[key]; ok && v != nil {
+							cellTemps = append(cellTemps, parseFloat(v))
+						}
+					}
+
+					maxCellMV := 0.0
+					if v, ok := snap["maxVoltage2bms"]; ok && v != nil {
+						maxCellMV = parseFloat(v)
+					}
+					minCellMV := 0.0
+					if v, ok := snap["minVoltage2bms"]; ok && v != nil {
+						minCellMV = parseFloat(v)
+					}
+
+					maxCellNum := 0
+					if v, ok := snap["maxVoltageNum2bms"]; ok && v != nil {
+						maxCellNum = int(parseFloat(v))
+					}
+					minCellNum := 0
+					if v, ok := snap["minVoltageNum2bms"]; ok && v != nil {
+						minCellNum = int(parseFloat(v))
+					}
+
+					soh := 0.0
+					if v, ok := snap["emsSoh"]; ok && v != nil {
+						soh = parseFloat(v)
+					} else if v, ok := snap["battSoh"]; ok && v != nil {
+						soh = parseFloat(v)
+					}
+
+					remKWh := 0.0
+					if v, ok := snap["remainingBatteryEnergy"]; ok && v != nil {
+						remKWh = parseFloat(v)
+					}
+
+					heatStat := ""
+					if v, ok := snap["heatStatusStr"]; ok && v != nil {
+						if str, ok := v.(string); ok {
+							heatStat = str
+						}
+					}
+
 					typeName := "Hybrid Solar Inverter"
 					if dev.DeviceType == "BP" {
 						typeName = "Lithium Battery Pack"
 					}
 
 					deviceItems = append(deviceItems, DeviceItem{
-						SN:              sn,
-						Alias:           alias,
-						Model:           dev.DeviceModel,
-						Type:            dev.DeviceType,
-						TypeName:        typeName,
-						Status:          dev.Status,
-						RatedPowerKW:    dev.RatedPower,
-						Country:         dev.CountryName,
-						TimeZone:        dev.TimeZone,
-						PvPowerW:        devPV,
-						PvVoltageV:      devVPV,
-						PvCurrentA:      devPVCurrent,
-						LoadPowerW:      devLoad,
-						LoadCurrentA:    devLoadCurrent,
-						BatterySoc:      devSoc,
-						BatteryPowerW:   devBatPower,
-						BatteryCurrentA: devBatCurrent,
-						BatteryVoltageV: devBatVolt,
-						GridPowerW:      devGridPower,
-						GridVoltageV:    devGridVolt,
-						CollectorSN:     dev.CollectorSN,
-						FirmwareVersion: dev.ModuleVersion,
-						PlantName:       dev.PlantName,
-						PlantID:         dev.PlantID,
-						ID:              dev.ID,
+						SN:               sn,
+						Alias:            alias,
+						Model:            dev.DeviceModel,
+						Type:             dev.DeviceType,
+						TypeName:         typeName,
+						Status:           dev.Status,
+						RatedPowerKW:     dev.RatedPower,
+						Country:          dev.CountryName,
+						TimeZone:         dev.TimeZone,
+						PvPowerW:         devPV,
+						PvVoltageV:       devVPV,
+						PvCurrentA:       devPVCurrent,
+						LoadPowerW:       devLoad,
+						LoadCurrentA:     devLoadCurrent,
+						BatterySoc:       devSoc,
+						BatteryPowerW:    devBatPower,
+						BatteryCurrentA:  devBatCurrent,
+						BatteryVoltageV:  devBatVolt,
+						GridPowerW:       devGridPower,
+						GridVoltageV:     devGridVolt,
+						CollectorSN:      dev.CollectorSN,
+						FirmwareVersion:  dev.ModuleVersion,
+						PlantName:        dev.PlantName,
+						PlantID:          dev.PlantID,
+						ID:               dev.ID,
+						CellVoltages:     cellVolts,
+						CellTemps:        cellTemps,
+						MaxCellVoltMV:    maxCellMV,
+						MinCellVoltMV:    minCellMV,
+						MaxCellNum:       maxCellNum,
+						MinCellNum:       minCellNum,
+						SOHPercent:       soh,
+						RemainingKWh:     remKWh,
+						HeatStatus:       heatStat,
 					})
 				} else {
 					devSoc = CalculateSOCFromVoltage(devBatVolt)

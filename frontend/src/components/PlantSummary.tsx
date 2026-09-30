@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Sun, Battery, Zap, Activity, X, Layers, ChevronRight } from 'lucide-react';
-import { TelemetryResponse } from '../types';
+import { Sun, Battery, Zap, Activity, X, Layers, ChevronRight, Thermometer } from 'lucide-react';
+import { TelemetryResponse, DeviceItem } from '../types';
 
 interface PlantSummaryProps {
   telemetry: TelemetryResponse | null;
@@ -60,6 +60,121 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry }) => {
           />
         ))}
         <span className="text-[10px] text-emerald-400 font-bold ml-1 font-mono">{activeCount}/5 Dots</span>
+      </div>
+    );
+  };
+
+  const renderBmsDetails = (dev: DeviceItem) => {
+    const cellVolts = dev.cell_voltages || [];
+    const cellTemps = dev.cell_temperatures || [];
+    const soh = dev.soh_percent != null && dev.soh_percent > 0 ? dev.soh_percent : 100;
+    const remKwh = dev.remaining_kwh;
+    const maxMV = dev.max_cell_voltage_mv || (cellVolts.length > 0 ? Math.max(...cellVolts) * 1000 : 0);
+    const minMV = dev.min_cell_voltage_mv || (cellVolts.length > 0 ? Math.min(...cellVolts) * 1000 : 0);
+    const maxNum = dev.max_cell_num || (cellVolts.length > 0 ? cellVolts.indexOf(Math.max(...cellVolts)) + 1 : 0);
+    const minNum = dev.min_cell_num || (cellVolts.length > 0 ? cellVolts.indexOf(Math.min(...cellVolts)) + 1 : 0);
+    const deltaMV = maxMV > 0 && minMV > 0 ? Math.round(maxMV - minMV) : 0;
+
+    if (cellVolts.length === 0 && cellTemps.length === 0 && !soh && !remKwh) {
+      return null;
+    }
+
+    return (
+      <div className="space-y-4 pt-3 border-t border-slate-800/80">
+        {/* BMS Diagnostic Key Metrics */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+          <div className="bg-slate-900/90 border border-slate-800 p-2.5 rounded-xl">
+            <span className="text-[10px] text-gray-400 block uppercase font-medium">State of Health (SOH)</span>
+            <span className="font-mono text-base font-bold text-emerald-400">{soh}%</span>
+          </div>
+
+          <div className="bg-slate-900/90 border border-slate-800 p-2.5 rounded-xl">
+            <span className="text-[10px] text-gray-400 block uppercase font-medium font-medium">Remaining Energy</span>
+            <span className="font-mono text-base font-bold text-cyan-400">
+              {remKwh != null && remKwh > 0 ? `${remKwh} kWh` : 'N/A'}
+            </span>
+          </div>
+
+          <div className="bg-slate-900/90 border border-slate-800 p-2.5 rounded-xl">
+            <span className="text-[10px] text-gray-400 block uppercase font-medium">Cell Delta Voltage</span>
+            <span className="font-mono text-base font-bold text-amber-400">
+              {deltaMV > 0 ? `${deltaMV} mV` : 'Balanced'}
+            </span>
+          </div>
+
+          <div className="bg-slate-900/90 border border-slate-800 p-2.5 rounded-xl">
+            <span className="text-[10px] text-gray-400 block uppercase font-medium">BMS Heat Status</span>
+            <span className="font-mono text-xs font-bold text-emerald-300">
+              {dev.heat_status || 'NotHeating'}
+            </span>
+          </div>
+        </div>
+
+        {/* Cell Temperature Sensors */}
+        {cellTemps.length > 0 && (
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-bold text-gray-300 flex items-center gap-1.5">
+              <Thermometer className="w-3.5 h-3.5 text-amber-400" />
+              <span>Cell Temperature Sensors ({cellTemps.length} Sensors)</span>
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {cellTemps.map((temp, idx) => (
+                <div key={idx} className="bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-lg flex items-center justify-between text-xs">
+                  <span className="text-gray-400 text-[10px]">Sensor #{idx + 1}</span>
+                  <span className="font-mono font-bold text-amber-300">{temp}°C</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 16 Cell Individual Voltage Breakdown */}
+        {cellVolts.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-gray-200 flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Cell Voltage Matrix ({cellVolts.length} Lithium Cells)</span>
+              </span>
+              <div className="flex items-center gap-2 text-[10px] font-mono">
+                <span className="text-emerald-400 font-semibold">Max: Cell #{maxNum} ({(maxMV/1000).toFixed(3)}V)</span>
+                <span className="text-cyan-400 font-semibold">Min: Cell #{minNum} ({(minMV/1000).toFixed(3)}V)</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5 font-mono text-xs">
+              {cellVolts.map((volt, idx) => {
+                const cellNo = idx + 1;
+                const isMax = cellNo === maxNum;
+                const isMin = cellNo === minNum;
+
+                return (
+                  <div
+                    key={idx}
+                    className={`p-2 rounded-lg border text-center transition ${
+                      isMax
+                        ? 'bg-emerald-500/20 border-emerald-400/60 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
+                        : isMin
+                        ? 'bg-cyan-500/20 border-cyan-400/60 shadow-[0_0_8px_rgba(6,182,212,0.3)]'
+                        : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[9px] text-gray-400 mb-0.5">
+                      <span>#{cellNo < 10 ? `0${cellNo}` : cellNo}</span>
+                      {isMax && <span className="text-[8px] bg-emerald-500/40 text-emerald-200 px-1 rounded font-bold">MAX</span>}
+                      {isMin && <span className="text-[8px] bg-cyan-500/40 text-cyan-200 px-1 rounded font-bold">MIN</span>}
+                    </div>
+                    <div className={`text-xs font-bold ${
+                      isMax ? 'text-emerald-300' : isMin ? 'text-cyan-300' : 'text-gray-200'
+                    }`}>
+                      {volt.toFixed(3)}V
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -414,6 +529,9 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry }) => {
                           </span>
                         </div>
                       </div>
+
+                      {/* BMS Telemetry Breakdown: 16-Cell Voltages, Temps & SOH */}
+                      {renderBmsDetails(dev)}
                     </div>
                   );
                 })
