@@ -5,6 +5,7 @@ import { AnalyticsSummary } from './components/AnalyticsSummary';
 import { DeviceGrid } from './components/DeviceGrid';
 import { DeviceDetailPage } from './components/DeviceDetailPage';
 import { BatteryDetailPage } from './components/BatteryDetailPage';
+import { AnimatedEnergyFlow } from './components/AnimatedEnergyFlow';
 import { ConfigModal } from './components/ConfigModal';
 import { LoginModal } from './components/LoginModal';
 import { UserManagementModal } from './components/UserManagementModal';
@@ -161,6 +162,7 @@ export const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryPoint[]>(fallbackHistory);
   const [analytics, setAnalytics] = useState<SavingsAnalytics | null>(fallbackAnalytics);
   const [selectedDevice, setSelectedDevice] = useState<DeviceItem | null>(null);
+  const [viewMode, setViewMode] = useState<'flow' | 'grid'>('flow');
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isUsersOpen, setIsUsersOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);

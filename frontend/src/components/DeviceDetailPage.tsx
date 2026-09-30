@@ -25,8 +25,9 @@ import {
   Filler,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { DeviceItem, HistoryPoint, SavingsAnalytics } from '../types';
+import { DeviceItem, HistoryPoint, SavingsAnalytics, TelemetryResponse } from '../types';
 import { AnalyticsSummary } from './AnalyticsSummary';
+import { AnimatedEnergyFlow } from './AnimatedEnergyFlow';
 import { getApiUrl } from '../apiConfig';
 
 ChartJS.register(
@@ -447,6 +448,47 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, allD
           </div>
         </div>
       </div>
+
+      {/* Shine App Style Animated Energy Flow Diagram View */}
+      <AnimatedEnergyFlow
+        telemetry={{
+          timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          is_live: true,
+          configured: true,
+          plant_info: {
+            name: device.alias,
+            total_devices: plantPvDevices.length + batteryUnits.length,
+            status: 'Online',
+          },
+          solar: {
+            power_w: totalPvPower,
+            voltage_v: avgPvVoltage,
+            current_a: totalPvCurrent,
+          },
+          battery: {
+            soc_percent: batterySoc,
+            power_w: batteryPower,
+            voltage_v: batteryVoltage,
+            status: batteryStatus,
+          },
+          load: {
+            power_w: loadPower,
+            voltage_v: 230,
+            frequency_hz: 50,
+          },
+          grid: {
+            power_w: device.grid_power_w || 0,
+            voltage_v: device.grid_voltage_v || 230,
+            status: 'Connected',
+          },
+          system: {
+            inverter_temp_c: 36.5,
+            health_status: 'Optimal',
+          },
+          devices: [device],
+        }}
+        analytics={deviceAnalytics}
+      />
 
       {/* Location-Specific TimescaleDB Analytics Summary */}
       <AnalyticsSummary
