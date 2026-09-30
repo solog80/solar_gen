@@ -4,9 +4,10 @@ import { TelemetryResponse, DeviceItem } from '../types';
 
 interface PlantSummaryProps {
   telemetry: TelemetryResponse | null;
+  onSelectDevice?: (device: DeviceItem) => void;
 }
 
-export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry }) => {
+export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry, onSelectDevice }) => {
   const [showPvModal, setShowPvModal] = useState(false);
   const [showBatteryModal, setShowBatteryModal] = useState(false);
 
@@ -532,6 +533,21 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry }) => {
 
                       {/* BMS Telemetry Breakdown: 16-Cell Voltages, Temps & SOH */}
                       {renderBmsDetails(dev)}
+
+                      {onSelectDevice && (
+                        <div className="pt-2 flex justify-end border-t border-slate-800/60">
+                          <button
+                            onClick={() => {
+                              setShowBatteryModal(false);
+                              onSelectDevice(dev);
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold border border-emerald-500/40 transition"
+                          >
+                            <span>Open Dedicated Battery Details Page</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })

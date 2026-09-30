@@ -656,42 +656,6 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, allD
 
       </div>
 
-      {/* Dedicated Lithium Battery Pack BMS Diagnostics (if BP device or battery packs exist) */}
-      {(isBattery || batteryUnits.some((b) => (b.cell_voltages && b.cell_voltages.length > 0) || b.type === 'BP')) && (
-        <div className="glass-card p-6 space-y-4 border border-emerald-500/30">
-          <div className="flex items-center justify-between border-b border-white/10 pb-3">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                <Battery className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-gray-100 flex items-center gap-2">
-                  <span>Lithium BMS Health & Cell Telemetry</span>
-                  <span className="px-2 py-0.5 text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-full font-mono">
-                    Felicity Shine BMS Active
-                  </span>
-                </h3>
-                <p className="text-xs text-gray-400">
-                  Real-time BMS Cell Voltages (mV to V), Temperatures & Health Diagnostics
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {(isBattery ? [device] : batteryUnits.filter((b) => b.type === 'BP' || (b.cell_voltages && b.cell_voltages.length > 0))).map((bDev) => (
-              <div key={bDev.sn} className="space-y-3">
-                <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="font-bold text-emerald-400 text-sm">{bDev.alias}</span>
-                  <span className="text-gray-400">SN: {bDev.sn}</span>
-                </div>
-                {renderBmsDetails(bDev)}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Full Hardware Specs & Inspector */}
       <div className="glass-card p-6 space-y-4">
         <div className="flex items-center gap-3 border-b border-white/10 pb-3">

@@ -4,6 +4,7 @@ import { PlantSummary } from './components/PlantSummary';
 import { AnalyticsSummary } from './components/AnalyticsSummary';
 import { DeviceGrid } from './components/DeviceGrid';
 import { DeviceDetailPage } from './components/DeviceDetailPage';
+import { BatteryDetailPage } from './components/BatteryDetailPage';
 import { ConfigModal } from './components/ConfigModal';
 import { LoginModal } from './components/LoginModal';
 import { UserManagementModal } from './components/UserManagementModal';
@@ -261,13 +262,28 @@ export const App: React.FC = () => {
     : null;
 
   if (currentDevice) {
+    const isBattery =
+      currentDevice.type === 'BP' ||
+      currentDevice.alias.toLowerCase().includes('battery') ||
+      currentDevice.model.toLowerCase().includes('slb') ||
+      currentDevice.model.toLowerCase().includes('lpbf') ||
+      currentDevice.model.toLowerCase().includes('fla');
+
     return (
       <div className="min-h-screen bg-[#0b0f17] text-gray-100 font-heading">
-        <DeviceDetailPage
-          device={currentDevice}
-          allDevices={telemetry?.devices || []}
-          onBack={() => setSelectedDevice(null)}
-        />
+        {isBattery ? (
+          <BatteryDetailPage
+            device={currentDevice}
+            allDevices={telemetry?.devices || []}
+            onBack={() => setSelectedDevice(null)}
+          />
+        ) : (
+          <DeviceDetailPage
+            device={currentDevice}
+            allDevices={telemetry?.devices || []}
+            onBack={() => setSelectedDevice(null)}
+          />
+        )}
       </div>
     );
   }
@@ -288,7 +304,10 @@ export const App: React.FC = () => {
         isRefreshing={isRefreshing}
       />
 
-      <PlantSummary telemetry={telemetry} />
+      <PlantSummary
+        telemetry={telemetry}
+        onSelectDevice={(dev) => setSelectedDevice(dev)}
+      />
 
       <AnalyticsSummary
         analytics={analytics}
