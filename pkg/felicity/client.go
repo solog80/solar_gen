@@ -526,12 +526,36 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 							}
 						}
 					}
+					if len(cellVolts) == 0 {
+						if list, ok := snap["bmsVoltageList"].([]interface{}); ok {
+							for _, item := range list {
+								mv := parseFloat(item)
+								if mv > 0 {
+									valV := mv
+									if mv > 100 {
+										valV = math.Round((mv/1000.0)*1000) / 1000.0
+									}
+									cellVolts = append(cellVolts, valV)
+								}
+							}
+						}
+					}
 
 					var cellTemps []float64
 					for i := 1; i <= 4; i++ {
 						key := "cellTemp" + strconv.Itoa(i)
 						if v, ok := snap[key]; ok && v != nil {
 							cellTemps = append(cellTemps, parseFloat(v))
+						}
+					}
+					if len(cellTemps) == 0 {
+						if list, ok := snap["cellTempList"].([]interface{}); ok {
+							for _, item := range list {
+								t := parseFloat(item)
+								if t > -10 && t < 100 {
+									cellTemps = append(cellTemps, t)
+								}
+							}
 						}
 					}
 
