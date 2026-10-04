@@ -20,10 +20,11 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry, onSelectD
     (d) => d.type !== 'BP' && (d.pv_power_w > 0 || d.type === 'MT' || d.type === 'OG' || d.type === 'INV')
   );
 
-  // Extract all battery units / packs
-  const batteryUnits = (telemetry?.devices || []).filter(
-    (d) => d.type === 'BP' || d.battery_soc > 0 || d.battery_power_w !== 0
-  );
+  // Extract battery units (strictly Lithium Battery Packs 'BP', or fallback to inverters)
+  const bpUnits = (telemetry?.devices || []).filter((d) => d.type === 'BP');
+  const batteryUnits = bpUnits.length > 0
+    ? bpUnits
+    : (telemetry?.devices || []).filter((d) => d.type === 'OG' || d.type === 'HY');
 
   const batterySoc = Math.round(telemetry?.battery?.soc_percent || 0);
   const batteryPower = Math.round(telemetry?.battery?.power_w || 0);
@@ -444,11 +445,11 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry, onSelectD
 
       {/* Battery Bank & BMS Breakdown Modal */}
       {showBatteryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
-          <div className="bg-[#0f172a] border border-emerald-500/30 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden text-gray-100 p-6 space-y-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#0f172a] border border-emerald-500/30 rounded-2xl w-full max-w-xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden text-gray-100 p-4 sm:p-6">
             
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            {/* Header (Fixed at top) */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
                   <Battery className="w-5 h-5" />
@@ -480,8 +481,9 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry, onSelectD
               </button>
             </div>
 
-            {/* Battery Packs & Units List */}
-            <div className="space-y-3">
+            {/* Scrollable Modal Content */}
+            <div className="overflow-y-auto pr-1 my-3 space-y-3 flex-1 custom-scrollbar">
+              {/* Battery Packs & Units List */}
               {batteryUnits.length === 0 ? (
                 <div className="p-4 text-center text-xs text-gray-400">No active battery units detected.</div>
               ) : (
@@ -552,20 +554,22 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry, onSelectD
                   );
                 })
               )}
+
+              {/* Informational Energy Balance */}
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs leading-relaxed space-y-1">
+                <span className="font-bold block text-emerald-200">Energy Balance & Charging Dynamics:</span>
+                <p className="text-[11px] text-emerald-300/90">
+                  When Total Solar PV & Grid Generation exceeds AC House Load, the surplus power is automatically directed to charge the battery bank.
+                </p>
+              </div>
             </div>
 
-            {/* Informational Energy Balance */}
-            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs leading-relaxed space-y-1">
-              <span className="font-bold block text-emerald-200">Energy Balance & Charging Dynamics:</span>
-              <p className="text-[11px] text-emerald-300/90">
-                When Total Solar PV & Grid Generation exceeds AC House Load, the surplus power is automatically directed to charge the battery bank.
-              </p>
-            </div>
-
-            <div className="pt-2 flex justify-end">
+            {/* Footer (Fixed at bottom) */}
+            <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between shrink-0">
+              <span className="text-xs text-gray-400">Showing {batteryUnits.length} battery unit(s)</span>
               <button
                 onClick={() => setShowBatteryModal(false)}
-                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-gray-200 text-xs font-semibold"
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-gray-200 text-xs font-semibold transition"
               >
                 Close Breakdown
               </button>
