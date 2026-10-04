@@ -325,6 +325,8 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 			totalBatPower := 0.0
 			totalGridPower := 0.0
 			maxTemp := 0.0
+			var maxBPSoc float64
+			var bpSocList []float64
 			var socList []float64
 			var batVoltList []float64
 			plantName := rawDevices[0].PlantName
@@ -642,6 +644,10 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 
 				if dev.DeviceType == "BP" {
 					if devSoc > 0 {
+						bpSocList = append(bpSocList, devSoc)
+						if devSoc > maxBPSoc {
+							maxBPSoc = devSoc
+						}
 						socList = append(socList, devSoc)
 						batVoltList = append(batVoltList, devBatVolt)
 					}
@@ -660,7 +666,8 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 					if devLoadFreq > 0 {
 						loadFreqList = append(loadFreqList, devLoadFreq)
 					}
-					if devSoc > 0 {
+					if devSoc > 0 && dev.DeviceType != "MT" {
+						bpSocList = append(bpSocList, devSoc)
 						socList = append(socList, devSoc)
 						batVoltList = append(batVoltList, devBatVolt)
 					}
@@ -672,7 +679,15 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 			}
 
 			avgSOC := 85.0
-			if len(socList) > 0 {
+			if maxBPSoc > 0 {
+				avgSOC = maxBPSoc
+			} else if len(bpSocList) > 0 {
+				sum := 0.0
+				for _, s := range bpSocList {
+					sum += s
+				}
+				avgSOC = math.Round((sum/float64(len(bpSocList)))*10) / 10
+			} else if len(socList) > 0 {
 				sum := 0.0
 				for _, s := range socList {
 					sum += s
@@ -902,6 +917,7 @@ func FilterTelemetryByPlant(t TelemetryResponse, plantFilter string) TelemetryRe
 	totalLoad := 0.0
 	totalBatPower := 0.0
 	totalGridPower := 0.0
+	var maxBPSoc float64
 	var bpSocList []float64
 	var socList []float64
 
@@ -916,7 +932,12 @@ func FilterTelemetryByPlant(t TelemetryResponse, plantFilter string) TelemetryRe
 			totalGridPower += dev.GridPowerW
 			if dev.BatterySoc > 0 {
 				socList = append(socList, dev.BatterySoc)
-				if dev.Type == "BP" || dev.Type == "OG" || dev.Type == "HY" {
+				if dev.Type == "BP" {
+					bpSocList = append(bpSocList, dev.BatterySoc)
+					if dev.BatterySoc > maxBPSoc {
+						maxBPSoc = dev.BatterySoc
+					}
+				} else if dev.Type == "OG" || dev.Type == "HY" {
 					bpSocList = append(bpSocList, dev.BatterySoc)
 				}
 			}
@@ -955,7 +976,9 @@ func FilterTelemetryByPlant(t TelemetryResponse, plantFilter string) TelemetryRe
 		}
 	}
 
-	if len(bpSocList) > 0 {
+	if maxBPSoc > 0 {
+		t.Battery.SocPercent = maxBPSoc
+	} else if len(bpSocList) > 0 {
 		sumSoc := 0.0
 		for _, s := range bpSocList {
 			sumSoc += s
