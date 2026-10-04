@@ -123,7 +123,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, allD
     ? Math.round(totalPlantBatPower)
     : Math.round(device.battery_power_w || 0);
 
-  const batteryVoltage = device.battery_voltage_v || (masterBp ? masterBp.battery_voltage_v : 53.5);
+  const batteryVoltage: number = device.battery_voltage_v || masterBp?.battery_voltage_v || 53.5;
   const batteryAmps = batteryVoltage > 0 ? Math.round((Math.abs(batteryPower) / batteryVoltage) * 10) / 10 : 0;
   const batteryStatus = batteryPower < 0 ? 'Charging' : (batteryPower > 0 ? 'Discharging' : 'Idle');
 
