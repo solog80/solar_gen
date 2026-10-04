@@ -437,8 +437,8 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 						devSoc = parseFloat(v)
 					}
 
-					// Fallback calculation from voltage ONLY if no valid BMS SOC is present (> 1.0)
-					if devSoc <= 1.0 && devBatVolt > 0 {
+					// Fallback calculation from voltage ONLY if no valid BMS SOC is present (> 1.0) and device is not an external MPPT controller
+					if devSoc <= 1.0 && devBatVolt > 0 && dev.DeviceType != "MT" {
 						devSoc = math.Round(CalculateSOCFromVoltage(devBatVolt)*10) / 10
 					}
 
@@ -902,6 +902,7 @@ func FilterTelemetryByPlant(t TelemetryResponse, plantFilter string) TelemetryRe
 	totalLoad := 0.0
 	totalBatPower := 0.0
 	totalGridPower := 0.0
+	var bpSocList []float64
 	var socList []float64
 
 	for _, dev := range t.Devices {
@@ -915,6 +916,9 @@ func FilterTelemetryByPlant(t TelemetryResponse, plantFilter string) TelemetryRe
 			totalGridPower += dev.GridPowerW
 			if dev.BatterySoc > 0 {
 				socList = append(socList, dev.BatterySoc)
+				if dev.Type == "BP" || dev.Type == "OG" || dev.Type == "HY" {
+					bpSocList = append(bpSocList, dev.BatterySoc)
+				}
 			}
 		}
 	}
@@ -951,7 +955,13 @@ func FilterTelemetryByPlant(t TelemetryResponse, plantFilter string) TelemetryRe
 		}
 	}
 
-	if len(socList) > 0 {
+	if len(bpSocList) > 0 {
+		sumSoc := 0.0
+		for _, s := range bpSocList {
+			sumSoc += s
+		}
+		t.Battery.SocPercent = math.Round((sumSoc/float64(len(bpSocList)))*10) / 10
+	} else if len(socList) > 0 {
 		sumSoc := 0.0
 		for _, s := range socList {
 			sumSoc += s
