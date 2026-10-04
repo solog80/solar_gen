@@ -507,19 +507,30 @@ func (s *Store) Get24HourHistory(deviceSN string, plant string) ([]felicity.Hist
 				date_trunc('hour', NOW()),
 				INTERVAL '1 hour'
 			) AS series_time
+		),
+		device_hourly AS (
+			SELECT 
+				date_trunc('hour', t.time) AS hourly_time,
+				t.device_sn,
+				AVG(t.pv_power_w) AS dev_pv_power,
+				AVG(t.load_power_w) AS dev_load_power,
+				MAX(t.battery_soc) AS dev_battery_soc,
+				AVG(t.battery_power_w) AS dev_battery_power,
+				MAX(t.grid_power_w) AS dev_grid_power
+			FROM felicity_solar_telemetry t
+			WHERE ($1 = '' OR t.device_sn = $1)
+			  AND ($2 = '' OR (LOWER($2) LIKE '%salt%' AND (t.alias ILIKE '%mubende%' OR t.alias ILIKE '%salt%')) OR (LOWER($2) LIKE '%solo%' AND (t.alias ILIKE '%mutungo%' OR t.alias ILIKE '%luzira%' OR t.alias ILIKE '%solo%')) OR (t.alias ILIKE '%' || $2 || '%'))
+			GROUP BY date_trunc('hour', t.time), t.device_sn
 		)
 		SELECT 
 			to_char(ts.series_time + INTERVAL '3 hours', 'HH24:00') AS hour_label,
-			COALESCE(AVG(t.pv_power_w), 0.0) as pv_power,
-			COALESCE(AVG(t.load_power_w), 0.0) as load_power,
-			COALESCE(AVG(t.battery_soc), 0.0) as battery_soc,
-			COALESCE(AVG(t.battery_power_w), 0.0) as battery_power,
-			COALESCE(AVG(t.grid_power_w), 0.0) as grid_power
+			COALESCE(SUM(dh.dev_pv_power), 0.0) AS pv_power,
+			COALESCE(MAX(dh.dev_load_power), 0.0) AS load_power,
+			COALESCE(MAX(dh.dev_battery_soc), 0.0) AS battery_soc,
+			COALESCE(SUM(dh.dev_battery_power), 0.0) AS battery_power,
+			COALESCE(MAX(dh.dev_grid_power), 0.0) AS grid_power
 		FROM time_series ts
-		LEFT JOIN felicity_solar_telemetry t 
-			ON date_trunc('hour', t.time) = ts.series_time
-		   AND ($1 = '' OR t.device_sn = $1)
-		   AND ($2 = '' OR (LOWER($2) LIKE '%salt%' AND (t.alias ILIKE '%mubende%' OR t.alias ILIKE '%salt%')) OR (LOWER($2) LIKE '%solo%' AND (t.alias ILIKE '%mutungo%' OR t.alias ILIKE '%luzira%' OR t.alias ILIKE '%solo%')) OR (t.alias ILIKE '%' || $2 || '%'))
+		LEFT JOIN device_hourly dh ON dh.hourly_time = ts.series_time
 		GROUP BY ts.series_time
 		ORDER BY ts.series_time ASC
 	`

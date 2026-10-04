@@ -334,32 +334,48 @@ func handleDeviceHistory(w http.ResponseWriter, r *http.Request) {
 
 	var history []felicity.HistoryPoint
 	if dbStore != nil {
-		h, err := dbStore.Get24HourHistory(deviceSN, plant)
+		searchSN := deviceSN
+		if plant != "" {
+			searchSN = ""
+		}
+		h, err := dbStore.Get24HourHistory(searchSN, plant)
 		if err == nil && len(h) > 0 {
 			history = h
 		}
 	}
 
-	// Find live device telemetry
 	live := client.GetTelemetry()
-	var targetDev *felicity.DeviceItem
-	for _, dev := range live.Devices {
-		if dev.SN == deviceSN {
-			targetDev = &dev
-			break
-		}
-	}
-
-	if targetDev != nil {
+	if plant != "" {
+		live = felicity.FilterTelemetryByPlant(live, plant)
 		livePoint := felicity.HistoryPoint{
 			Time:          time.Now().In(felicity.EATLocation).Format("15:04"),
-			PvPower:       targetDev.PvPowerW,
-			LoadPower:     targetDev.LoadPowerW,
-			BatterySoc:    targetDev.BatterySoc,
-			BatteryPowerW: targetDev.BatteryPowerW,
-			GridPowerW:    targetDev.GridPowerW,
+			PvPower:       live.Solar.PowerW,
+			LoadPower:     live.Load.PowerW,
+			BatterySoc:    live.Battery.SocPercent,
+			BatteryPowerW: live.Battery.PowerW,
+			GridPowerW:    live.Grid.PowerW,
 		}
 		history = append(history, livePoint)
+	} else {
+		var targetDev *felicity.DeviceItem
+		for _, dev := range live.Devices {
+			if dev.SN == deviceSN {
+				targetDev = &dev
+				break
+			}
+		}
+
+		if targetDev != nil {
+			livePoint := felicity.HistoryPoint{
+				Time:          time.Now().In(felicity.EATLocation).Format("15:04"),
+				PvPower:       targetDev.PvPowerW,
+				LoadPower:     targetDev.LoadPowerW,
+				BatterySoc:    targetDev.BatterySoc,
+				BatteryPowerW: targetDev.BatteryPowerW,
+				GridPowerW:    targetDev.GridPowerW,
+			}
+			history = append(history, livePoint)
+		}
 	}
 
 	_ = json.NewEncoder(w).Encode(history)
