@@ -42,7 +42,7 @@ func NewClient(configDir string) *Client {
 	client := &Client{
 		configPath: cfgPath,
 		httpClient: &http.Client{
-			Timeout:   10 * time.Second,
+			Timeout:   30 * time.Second,
 			Transport: tr,
 		},
 	}
@@ -343,7 +343,6 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 				}
 
 				pvDirect := parseFloat(dev.PvTotalPower)
-				totalPV += pvDirect
 
 				snap := snapshots[sn]
 				devPV := pvDirect
@@ -647,6 +646,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 						batVoltList = append(batVoltList, devBatVolt)
 					}
 				} else {
+					totalPV += devPV
 					totalLoad += devLoad
 					totalBatPower += devBatPower
 					totalGridPower += devGridPower
@@ -716,15 +716,21 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 				avgLoadFreq = math.Round((sumLF/float64(len(loadFreqList)))*10) / 10
 			}
 
-			netBatPower := (totalPV + totalGridPower) - totalLoad
+			finalBatPower := totalBatPower
 			batStatus := "Idle"
-			finalBatPower := 0.0
-			if netBatPower > 10.0 {
+			if finalBatPower < -10.0 {
 				batStatus = "Charging"
-				finalBatPower = -1.0 * math.Round(netBatPower*10) / 10
-			} else if netBatPower < -10.0 {
+			} else if finalBatPower > 10.0 {
 				batStatus = "Discharging"
-				finalBatPower = math.Round(math.Abs(netBatPower)*10) / 10
+			} else {
+				netBatPower := (totalPV + totalGridPower) - totalLoad
+				if netBatPower > 10.0 {
+					batStatus = "Charging"
+					finalBatPower = -1.0 * math.Round(netBatPower*10) / 10
+				} else if netBatPower < -10.0 {
+					batStatus = "Discharging"
+					finalBatPower = math.Round(math.Abs(netBatPower)*10) / 10
+				}
 			}
 
 			var resp TelemetryResponse
@@ -924,16 +930,25 @@ func FilterTelemetryByPlant(t TelemetryResponse, plantFilter string) TelemetryRe
 	t.Load.PowerW = totalLoad
 	t.Grid.PowerW = totalGridPower
 
-	netPower := (totalPV + totalGridPower) - totalLoad
-	if netPower > 10.0 {
-		t.Battery.PowerW = -1.0 * math.Round(netPower*10) / 10
-		t.Battery.Status = "Charging"
-	} else if netPower < -10.0 {
-		t.Battery.PowerW = math.Round(math.Abs(netPower)*10) / 10
-		t.Battery.Status = "Discharging"
+	if math.Abs(totalBatPower) > 10.0 {
+		t.Battery.PowerW = math.Round(totalBatPower*10) / 10
+		if totalBatPower < -10.0 {
+			t.Battery.Status = "Charging"
+		} else {
+			t.Battery.Status = "Discharging"
+		}
 	} else {
-		t.Battery.PowerW = 0.0
-		t.Battery.Status = "Idle"
+		netPower := (totalPV + totalGridPower) - totalLoad
+		if netPower > 10.0 {
+			t.Battery.PowerW = -1.0 * math.Round(netPower*10) / 10
+			t.Battery.Status = "Charging"
+		} else if netPower < -10.0 {
+			t.Battery.PowerW = math.Round(math.Abs(netPower)*10) / 10
+			t.Battery.Status = "Discharging"
+		} else {
+			t.Battery.PowerW = 0.0
+			t.Battery.Status = "Idle"
+		}
 	}
 
 	if len(socList) > 0 {
