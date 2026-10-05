@@ -20,8 +20,8 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry, onSelectD
     (d) => d.type !== 'BP' && (d.pv_power_w > 0 || d.type === 'MT' || d.type === 'OG' || d.type === 'INV')
   );
 
-  // Extract battery units (strictly Lithium Battery Packs 'BP', or fallback to inverters)
-  const bpUnits = (telemetry?.devices || []).filter((d) => d.type === 'BP');
+  // Extract battery units (strictly Lithium Battery Packs 'BP', sorted so Battery 1 is first)
+  const bpUnits = (telemetry?.devices || []).filter((d) => d.type === 'BP').sort((a, b) => a.alias.localeCompare(b.alias));
   const batteryUnits = bpUnits.length > 0
     ? bpUnits
     : (telemetry?.devices || []).filter((d) => d.type === 'OG' || d.type === 'HY');

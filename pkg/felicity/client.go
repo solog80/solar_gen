@@ -678,9 +678,21 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 				}
 			}
 
+			var primaryBPSoc float64
+			for _, dev := range deviceItems {
+				if dev.Type == "BP" && dev.BatterySoc > 0 {
+					if primaryBPSoc == 0 || strings.Contains(strings.ToLower(dev.Alias), "1") {
+						primaryBPSoc = dev.BatterySoc
+						if strings.Contains(strings.ToLower(dev.Alias), "1") {
+							break
+						}
+					}
+				}
+			}
+
 			avgSOC := 85.0
-			if maxBPSoc > 0 {
-				avgSOC = maxBPSoc
+			if primaryBPSoc > 0 {
+				avgSOC = primaryBPSoc
 			} else if len(bpSocList) > 0 {
 				sum := 0.0
 				for _, s := range bpSocList {
@@ -976,8 +988,20 @@ func FilterTelemetryByPlant(t TelemetryResponse, plantFilter string) TelemetryRe
 		}
 	}
 
-	if maxBPSoc > 0 {
-		t.Battery.SocPercent = maxBPSoc
+	var primaryBPSoc float64
+	for _, dev := range filtered {
+		if dev.Type == "BP" && dev.BatterySoc > 0 {
+			if primaryBPSoc == 0 || strings.Contains(strings.ToLower(dev.Alias), "1") {
+				primaryBPSoc = dev.BatterySoc
+				if strings.Contains(strings.ToLower(dev.Alias), "1") {
+					break
+				}
+			}
+		}
+	}
+
+	if primaryBPSoc > 0 {
+		t.Battery.SocPercent = primaryBPSoc
 	} else if len(bpSocList) > 0 {
 		sumSoc := 0.0
 		for _, s := range bpSocList {
