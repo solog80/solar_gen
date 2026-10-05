@@ -37,7 +37,9 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry, onSelectD
   const loadAmps = loadVoltage > 0 ? Math.round((loadPower / loadVoltage) * 10) / 10 : 0;
 
   const gridPower = Math.round(telemetry?.grid?.power_w || 0);
-  const gridVoltage = telemetry?.grid?.voltage_v || 230;
+  const gridVoltage = telemetry?.grid?.voltage_v ?? 0;
+  const gridStatus = telemetry?.grid?.status || (gridVoltage > 90 ? 'Connected' : 'Disconnected');
+  const isGridConnected = gridStatus === 'Connected' || gridVoltage > 90;
   const temp = telemetry?.system?.inverter_temp_c || 36.5;
 
   const renderLedDots = (soc: number) => {
@@ -301,25 +303,34 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry, onSelectD
         </div>
 
         {/* AC Grid Status Card */}
-        <div className="glass-card p-4 sm:p-6 flex flex-col justify-between gap-3 sm:gap-4 transition hover:-translate-y-1 hover:border-white/20">
+        <div className={`glass-card p-4 sm:p-6 flex flex-col justify-between gap-3 sm:gap-4 transition hover:-translate-y-1 ${isGridConnected ? 'hover:border-white/20' : 'border-red-500/40'}`}>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0">
-              <Activity className="w-5 h-5 sm:w-6 sm:h-6" />
+            <div className="relative shrink-0">
+              <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl ${isGridConnected ? 'bg-purple-500/15 text-purple-400' : 'bg-red-500/15 text-red-400'} flex items-center justify-center`}>
+                <Activity className="w-5 h-5 sm:w-6 sm:h-6" />
+              </div>
+              {!isGridConnected && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-md border border-slate-900">
+                  ✕
+                </div>
+              )}
             </div>
             <div>
               <span className="block text-xs sm:text-sm font-semibold text-gray-200">AC Utility Grid</span>
-              <span className="text-[10px] sm:text-xs text-gray-400">Grid Feed & Inverter Temp</span>
+              <span className={`text-[10px] sm:text-xs ${isGridConnected ? 'text-gray-400' : 'text-red-400 font-semibold'}`}>
+                {isGridConnected ? (gridPower > 0 ? 'Grid Import Active' : 'Grid Connected / Standby') : 'Grid Disconnected / Outage'}
+              </span>
             </div>
           </div>
 
-          <div className="font-mono text-2xl sm:text-3xl font-bold text-purple-400 drop-shadow-[0_0_12px_rgba(168,85,247,0.3)]">
+          <div className={`font-mono text-2xl sm:text-3xl font-bold ${isGridConnected ? 'text-purple-400 drop-shadow-[0_0_12px_rgba(168,85,247,0.3)]' : 'text-red-400'}`}>
             {gridPower.toLocaleString()} <span className="text-xs sm:text-sm font-sans font-normal text-gray-400">W</span>
           </div>
 
           <div className="grid grid-cols-2 gap-2 pt-2.5 sm:pt-3 border-t border-white/5 text-xs">
             <div>
               <span className="block text-[10px] text-gray-400 uppercase tracking-wider">Grid Voltage</span>
-              <span className="font-mono font-semibold">{gridVoltage} V</span>
+              <span className={`font-mono font-semibold ${isGridConnected ? 'text-gray-200' : 'text-red-400'}`}>{gridVoltage} V</span>
             </div>
             <div>
               <span className="block text-[10px] text-gray-400 uppercase tracking-wider">Inverter Temp</span>

@@ -103,8 +103,12 @@ export const DeviceGrid: React.FC<DeviceGridProps> = ({ devices, onSelectDevice 
               {/* Utility Grid AC */}
               <div className="flex justify-between items-center">
                 <span className="text-gray-400">Utility Grid AC</span>
-                <span className="font-mono text-purple-400 font-bold text-xs">
-                  {device.grid_power_w && device.grid_power_w > 0 ? `${device.grid_power_w} W` : 'Connected (230V @ 50Hz)'}
+                <span className={`font-mono font-bold text-xs ${(device.grid_voltage_v ?? 0) > 90 || (device.grid_power_w && device.grid_power_w > 0) ? 'text-purple-400' : 'text-red-400'}`}>
+                  {device.grid_power_w && device.grid_power_w > 0
+                    ? `${device.grid_power_w} W`
+                    : (device.grid_voltage_v ?? 0) > 90
+                      ? 'Connected (230V)'
+                      : 'Disconnected (0V)'}
                 </span>
               </div>
             </div>

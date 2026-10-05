@@ -36,6 +36,9 @@ export const AnimatedEnergyFlow: React.FC<AnimatedEnergyFlowProps> = ({
   const loadPower = Math.round(telemetry?.load?.power_w || 0);
   const batteryPower = Math.round(telemetry?.battery?.power_w || 0);
   const gridPower = Math.round(telemetry?.grid?.power_w || 0);
+  const gridVoltage = telemetry?.grid?.voltage_v ?? 0;
+  const gridStatus = telemetry?.grid?.status || (gridVoltage > 90 ? 'Connected' : 'Disconnected');
+  const isGridConnected = gridStatus === 'Connected' || gridVoltage > 90;
   const batterySoc = Math.round(telemetry?.battery?.soc_percent || 0);
 
   const isCharging = batteryPower < 0;
@@ -210,11 +213,19 @@ export const AnimatedEnergyFlow: React.FC<AnimatedEnergyFlowProps> = ({
               <circle cx="207" cy="362" r="4" fill="#10b981" className="animate-pulse" />
 
               {/* Utility Grid Tower (Right Side) */}
-              <path
-                d="M 710 160 L 730 360 M 690 200 L 750 200 M 695 250 L 745 250 M 700 300 L 740 300 M 690 200 L 730 360 M 750 200 L 710 360"
-                stroke="#64748b"
-                strokeWidth="2"
-              />
+              <g>
+                <path
+                  d="M 710 160 L 730 360 M 690 200 L 750 200 M 695 250 L 745 250 M 700 300 L 740 300 M 690 200 L 730 360 M 750 200 L 710 360"
+                  stroke="#64748b"
+                  strokeWidth="2"
+                />
+                {!isGridConnected && (
+                  <g transform="translate(720, 200)">
+                    <circle cx="0" cy="0" r="14" fill="#ef4444" stroke="#ffffff" strokeWidth="2" />
+                    <path d="M -5 -5 L 5 5 M 5 -5 L -5 5" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" />
+                  </g>
+                )}
+              </g>
 
               {/* Dynamic Connecting Lines & Flow Animation */}
               
@@ -306,13 +317,22 @@ export const AnimatedEnergyFlow: React.FC<AnimatedEnergyFlowProps> = ({
           </div>
 
           {/* Top Right: Utility Grid Node */}
-          <div className="relative z-10 self-end glass-card px-4 py-3 border border-purple-500/40 bg-slate-900/90 shadow-xl rounded-2xl flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold">
-              <Activity className="w-6 h-6" />
+          <div className={`relative z-10 self-end glass-card px-4 py-3 border ${isGridConnected ? 'border-purple-500/40' : 'border-red-500/40'} bg-slate-900/90 shadow-xl rounded-2xl flex items-center gap-3`}>
+            <div className="relative">
+              <div className={`w-10 h-10 rounded-xl ${isGridConnected ? 'bg-purple-500/20 text-purple-400' : 'bg-red-500/20 text-red-400'} flex items-center justify-center font-bold`}>
+                <Activity className="w-6 h-6" />
+              </div>
+              {!isGridConnected && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-md border border-slate-900">
+                  ✕
+                </div>
+              )}
             </div>
             <div>
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Grid AC</span>
-              <div className="font-mono text-xl font-bold text-purple-400 flex items-baseline gap-1">
+              <span className={`text-[10px] font-bold uppercase tracking-wider block ${isGridConnected ? 'text-gray-400' : 'text-red-400'}`}>
+                {isGridConnected ? 'Grid AC' : 'Grid Outage'}
+              </span>
+              <div className={`font-mono text-xl font-bold ${isGridConnected ? 'text-purple-400' : 'text-red-400'} flex items-baseline gap-1`}>
                 <span>{gridPower.toLocaleString()}</span>
                 <span className="text-xs font-sans font-normal text-purple-300">W</span>
               </div>

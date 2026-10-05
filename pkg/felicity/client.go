@@ -321,6 +321,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 			var pvVoltList []float64
 			var loadVoltList []float64
 			var loadFreqList []float64
+			var gridVoltList []float64
 			totalLoad := 0.0
 			totalBatPower := 0.0
 			totalGridPower := 0.0
@@ -357,7 +358,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 				devPVCurrent := 0.0
 
 				devGridPower := 0.0
-				devGridVolt := 230.0
+				devGridVolt := 0.0
 				devLoadVolt := 230.0
 				devLoadFreq := 50.0
 
@@ -666,6 +667,9 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 					if devLoadFreq > 0 {
 						loadFreqList = append(loadFreqList, devLoadFreq)
 					}
+					if devGridVolt > 0 {
+						gridVoltList = append(gridVoltList, devGridVolt)
+					}
 					if devSoc > 0 && dev.DeviceType != "MT" {
 						bpSocList = append(bpSocList, devSoc)
 						socList = append(socList, devSoc)
@@ -743,6 +747,23 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 				avgLoadFreq = math.Round((sumLF/float64(len(loadFreqList)))*10) / 10
 			}
 
+			avgGridVolt := 0.0
+			if len(gridVoltList) > 0 {
+				sumGV := 0.0
+				for _, v := range gridVoltList {
+					sumGV += v
+				}
+				avgGridVolt = math.Round((sumGV/float64(len(gridVoltList)))*10) / 10
+			}
+
+			gridStatus := "Disconnected"
+			if avgGridVolt > 90.0 || totalGridPower > 0 {
+				gridStatus = "Connected"
+				if avgGridVolt == 0 {
+					avgGridVolt = 230.0
+				}
+			}
+
 			finalBatPower := totalBatPower
 			batStatus := "Idle"
 			if finalBatPower < -10.0 {
@@ -782,8 +803,8 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 			resp.Load.FrequencyHz = avgLoadFreq
 
 			resp.Grid.PowerW = math.Round(totalGridPower*10) / 10
-			resp.Grid.VoltageV = 230.0
-			resp.Grid.Status = "Connected"
+			resp.Grid.VoltageV = avgGridVolt
+			resp.Grid.Status = gridStatus
 
 			resp.System.InverterTempC = maxTemp
 			if maxTemp == 0 {

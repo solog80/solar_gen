@@ -636,22 +636,33 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, allD
         </div>
 
         {/* Utility Grid AC Input */}
-        <div className="glass-card p-6 space-y-3">
+        <div className={`glass-card p-6 space-y-3 ${(device.grid_voltage_v ?? 0) > 90 || (device.grid_power_w && device.grid_power_w > 0) ? '' : 'border-red-500/40'}`}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center">
-              <Zap className="w-6 h-6" />
+            <div className="relative">
+              <div className={`w-10 h-10 rounded-xl ${(device.grid_voltage_v ?? 0) > 90 || (device.grid_power_w && device.grid_power_w > 0) ? 'bg-purple-500/15 text-purple-400' : 'bg-red-500/15 text-red-400'} flex items-center justify-center`}>
+                <Zap className="w-6 h-6" />
+              </div>
+              {!((device.grid_voltage_v ?? 0) > 90 || (device.grid_power_w && device.grid_power_w > 0)) && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-md border border-slate-900">
+                  ✕
+                </div>
+              )}
             </div>
             <div>
               <span className="block text-sm font-semibold text-gray-200">AC Grid Input</span>
-              <span className="text-xs text-emerald-400 font-semibold">Grid Connected</span>
+              <span className={`text-xs font-semibold ${(device.grid_voltage_v ?? 0) > 90 || (device.grid_power_w && device.grid_power_w > 0) ? 'text-emerald-400' : 'text-red-400'}`}>
+                {(device.grid_voltage_v ?? 0) > 90 || (device.grid_power_w && device.grid_power_w > 0) ? 'Grid Connected' : 'Grid Outage / Disconnected'}
+              </span>
             </div>
           </div>
-          <div className="font-mono text-2xl font-black text-gray-100">
+          <div className={`font-mono text-2xl font-black ${(device.grid_voltage_v ?? 0) > 90 || (device.grid_power_w && device.grid_power_w > 0) ? 'text-gray-100' : 'text-red-400'}`}>
             {device.grid_power_w || 0} <span className="text-sm font-normal text-gray-400">W</span>
           </div>
           <div className="flex justify-between text-xs pt-2 border-t border-white/5">
             <span className="text-gray-400">Grid Voltage / Freq</span>
-            <span className="font-mono font-semibold text-purple-400">{device.grid_voltage_v || 230}V @ 50Hz</span>
+            <span className={`font-mono font-semibold ${(device.grid_voltage_v ?? 0) > 90 || (device.grid_power_w && device.grid_power_w > 0) ? 'text-purple-400' : 'text-red-400'}`}>
+              {device.grid_voltage_v ?? 0}V @ 50Hz
+            </span>
           </div>
         </div>
 
