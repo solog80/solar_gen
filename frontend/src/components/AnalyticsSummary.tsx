@@ -16,6 +16,7 @@ interface AnalyticsSummaryProps {
   onRefreshAnalytics: () => void;
   deviceSn?: string;
   deviceName?: string;
+  plantName?: string;
 }
 
 export const AnalyticsSummary: React.FC<AnalyticsSummaryProps> = ({
@@ -23,6 +24,7 @@ export const AnalyticsSummary: React.FC<AnalyticsSummaryProps> = ({
   onRefreshAnalytics,
   deviceSn = '',
   deviceName = '',
+  plantName = '',
 }) => {
   const [isBackfilling, setIsBackfilling] = useState(false);
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
@@ -218,7 +220,8 @@ export const AnalyticsSummary: React.FC<AnalyticsSummaryProps> = ({
         isOpen={isBreakdownOpen}
         onClose={() => setIsBreakdownOpen(false)}
         deviceSn={deviceSn}
-        deviceName={deviceName || 'Overall Plant'}
+        deviceName={deviceName || plantName || 'Overall Plant'}
+        plantName={plantName}
       />
     </div>
   );

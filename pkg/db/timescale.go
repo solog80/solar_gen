@@ -367,7 +367,7 @@ func (s *Store) GetAnalytics(deviceSN string, plant string, startDate string, en
 					grid_power_w,
 					LAG(time) OVER (PARTITION BY device_sn ORDER BY time) as prev_time
 				FROM felicity_solar_telemetry
-				WHERE ($1 = '' OR device_sn = $1)
+				WHERE ($4 != '' OR $1 = '' OR device_sn = $1)
 				  AND ($2 = '' OR time >= $2::timestamp)
 				  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
 				  AND ($4 = '' OR (LOWER($4) LIKE '%salt%' AND (alias ILIKE '%mubende%' OR alias ILIKE '%salt%')) OR (LOWER($4) LIKE '%solo%' AND (alias ILIKE '%mutungo%' OR alias ILIKE '%luzira%' OR alias ILIKE '%solo%')) OR (alias ILIKE '%' || $4 || '%'))
@@ -461,7 +461,7 @@ func (s *Store) GetPeriodBreakdown(deviceSN string, plant string, period string,
 					grid_power_w,
 					LAG(time) OVER (PARTITION BY device_sn ORDER BY time) as prev_time
 				FROM felicity_solar_telemetry
-				WHERE ($1 = '' OR device_sn = $1)
+				WHERE ($4 != '' OR $1 = '' OR device_sn = $1)
 				  AND ($2 = '' OR time >= $2::timestamp)
 				  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
 				  AND ($4 = '' OR (LOWER($4) LIKE '%%salt%%' AND (alias ILIKE '%%mubende%%' OR alias ILIKE '%%salt%%')) OR (LOWER($4) LIKE '%%solo%%' AND (alias ILIKE '%%mutungo%%' OR alias ILIKE '%%luzira%%' OR alias ILIKE '%%solo%%')) OR (alias ILIKE '%%' || $4 || '%%'))

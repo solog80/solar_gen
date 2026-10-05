@@ -17,6 +17,7 @@ interface PeriodBreakdownModalProps {
   onClose: () => void;
   deviceSn?: string;
   deviceName?: string;
+  plantName?: string;
 }
 
 export const PeriodBreakdownModal: React.FC<PeriodBreakdownModalProps> = ({
@@ -24,21 +25,31 @@ export const PeriodBreakdownModal: React.FC<PeriodBreakdownModalProps> = ({
   onClose,
   deviceSn = '',
   deviceName = 'Overall Plant',
+  plantName = '',
 }) => {
   const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [selectedPlant, setSelectedPlant] = useState<string>(plantName || '');
   const [data, setData] = useState<PeriodBreakdownResponse | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (plantName) {
+      setSelectedPlant(plantName);
+    }
+  }, [plantName]);
 
   const fetchBreakdown = async () => {
     if (!isOpen) return;
     try {
       setLoading(true);
-      const querySn = deviceSn ? `&sn=${deviceSn}` : '';
+      const activePlant = selectedPlant || plantName;
+      const queryPlant = activePlant ? `&plant=${encodeURIComponent(activePlant)}` : '';
+      const querySn = (deviceSn && !activePlant) ? `&sn=${deviceSn}` : '';
       const queryStart = startDate ? `&start_date=${startDate}` : '';
       const queryEnd = endDate ? `&end_date=${endDate}` : '';
-      const res = await fetch(getApiUrl(`/api/breakdown?period=${period}${querySn}${queryStart}${queryEnd}`));
+      const res = await fetch(getApiUrl(`/api/breakdown?period=${period}${queryPlant}${querySn}${queryStart}${queryEnd}`));
       const result: PeriodBreakdownResponse = await res.json();
       setData(result);
     } catch (err) {
@@ -50,7 +61,7 @@ export const PeriodBreakdownModal: React.FC<PeriodBreakdownModalProps> = ({
 
   useEffect(() => {
     fetchBreakdown();
-  }, [isOpen, period, deviceSn]);
+  }, [isOpen, period, deviceSn, selectedPlant, plantName]);
 
   if (!isOpen) return null;
 
@@ -140,6 +151,43 @@ export const PeriodBreakdownModal: React.FC<PeriodBreakdownModalProps> = ({
         {/* Date Range Selector & Quick Presets Toolbar */}
         <div className="p-4 border-b border-slate-800/80 bg-slate-900/40 space-y-3">
           
+          {/* Plant Scope Selector */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-gray-400 text-xs font-semibold">Scope:</span>
+            <div className="flex bg-slate-800/80 p-1 rounded-xl border border-slate-700/50 text-xs">
+              <button
+                onClick={() => setSelectedPlant('Salt Media')}
+                className={`px-3 py-1 rounded-lg font-bold transition ${
+                  selectedPlant.toLowerCase().includes('salt') || selectedPlant.toLowerCase().includes('mubende')
+                    ? 'bg-amber-500 text-slate-950 shadow-md'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Salt Media (Mubende)
+              </button>
+              <button
+                onClick={() => setSelectedPlant('Solo Solar Energy')}
+                className={`px-3 py-1 rounded-lg font-bold transition ${
+                  selectedPlant.toLowerCase().includes('solo') || selectedPlant.toLowerCase().includes('luzira')
+                    ? 'bg-amber-500 text-slate-950 shadow-md'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Solo Solar (Luzira)
+              </button>
+              <button
+                onClick={() => setSelectedPlant('')}
+                className={`px-3 py-1 rounded-lg font-bold transition ${
+                  !selectedPlant
+                    ? 'bg-emerald-500 text-slate-950 shadow-md'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Overall System
+              </button>
+            </div>
+          </div>
+
           {/* Row 1: Period Tabs + Presets */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex bg-slate-800/80 p-1 rounded-xl border border-slate-700/50">

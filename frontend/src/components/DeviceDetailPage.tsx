@@ -509,6 +509,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, allD
         onRefreshAnalytics={fetchDeviceAnalytics}
         deviceSn={device.sn}
         deviceName={device.alias}
+        plantName={device.plant_name}
       />
 
       {/* KPI Cards for This Dedicated Location Home */}

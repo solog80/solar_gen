@@ -260,6 +260,7 @@ export const BatteryDetailPage: React.FC<BatteryDetailPageProps> = ({
         onRefreshAnalytics={fetchDeviceAnalytics}
         deviceSn={device.sn}
         deviceName={device.alias}
+        plantName={device.plant_name}
       />
 
       {/* Battery KPI Metric Cards */}
