@@ -31,6 +31,7 @@ export const PeriodBreakdownModal: React.FC<PeriodBreakdownModalProps> = ({
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [selectedPlant, setSelectedPlant] = useState<string>(plantName || '');
+  const [plantsList, setPlantsList] = useState<string[]>([]);
   const [data, setData] = useState<PeriodBreakdownResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -39,6 +40,25 @@ export const PeriodBreakdownModal: React.FC<PeriodBreakdownModalProps> = ({
       setSelectedPlant(plantName);
     }
   }, [plantName]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const loadPlants = async () => {
+      try {
+        const res = await fetch(getApiUrl('/api/status'));
+        const statusData = await res.json();
+        if (statusData?.devices) {
+          const unique = Array.from(
+            new Set(statusData.devices.map((d: any) => d.plant_name).filter(Boolean))
+          ) as string[];
+          setPlantsList(unique);
+        }
+      } catch (err) {
+        console.error('Failed to load dynamic plants list:', err);
+      }
+    };
+    loadPlants();
+  }, [isOpen]);
 
   const fetchBreakdown = async () => {
     if (!isOpen) return;
@@ -151,30 +171,10 @@ export const PeriodBreakdownModal: React.FC<PeriodBreakdownModalProps> = ({
         {/* Date Range Selector & Quick Presets Toolbar */}
         <div className="p-4 border-b border-slate-800/80 bg-slate-900/40 space-y-3">
           
-          {/* Plant Scope Selector */}
+          {/* Dynamic Plant Scope Selector */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-gray-400 text-xs font-semibold">Scope:</span>
-            <div className="flex bg-slate-800/80 p-1 rounded-xl border border-slate-700/50 text-xs">
-              <button
-                onClick={() => setSelectedPlant('Salt Media')}
-                className={`px-3 py-1 rounded-lg font-bold transition ${
-                  selectedPlant.toLowerCase().includes('salt') || selectedPlant.toLowerCase().includes('mubende')
-                    ? 'bg-amber-500 text-slate-950 shadow-md'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Salt Media (Mubende)
-              </button>
-              <button
-                onClick={() => setSelectedPlant('Solo Solar Energy')}
-                className={`px-3 py-1 rounded-lg font-bold transition ${
-                  selectedPlant.toLowerCase().includes('solo') || selectedPlant.toLowerCase().includes('luzira')
-                    ? 'bg-amber-500 text-slate-950 shadow-md'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Solo Solar (Luzira)
-              </button>
+            <div className="flex bg-slate-800/80 p-1 rounded-xl border border-slate-700/50 text-xs flex-wrap gap-1">
               <button
                 onClick={() => setSelectedPlant('')}
                 className={`px-3 py-1 rounded-lg font-bold transition ${
@@ -185,6 +185,26 @@ export const PeriodBreakdownModal: React.FC<PeriodBreakdownModalProps> = ({
               >
                 Overall System
               </button>
+
+              {plantsList.map((p) => {
+                const isActive =
+                  selectedPlant.toLowerCase() === p.toLowerCase() ||
+                  (selectedPlant !== '' && p.toLowerCase().includes(selectedPlant.toLowerCase()));
+
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setSelectedPlant(p)}
+                    className={`px-3 py-1 rounded-lg font-bold transition ${
+                      isActive
+                        ? 'bg-amber-500 text-slate-950 shadow-md'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
