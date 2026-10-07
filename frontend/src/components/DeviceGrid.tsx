@@ -49,6 +49,7 @@ export const DeviceGrid: React.FC<DeviceGridProps> = ({ devices, onSelectDevice 
         const loadWatts = Math.round(device.load_power_w);
         const loadAmps = device.load_current_a || Math.round((loadWatts / 230.0) * 10) / 10;
         const batSoc = Math.round(device.battery_soc);
+        const batSocValid = device.battery_soc_valid !== false;
         const batWatts = Math.round(device.battery_power_w);
         const batAmps = device.battery_current_a || Math.round((Math.abs(batWatts) / 53.5) * 10) / 10;
 
@@ -93,10 +94,10 @@ export const DeviceGrid: React.FC<DeviceGridProps> = ({ devices, onSelectDevice 
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
                   <span className="text-gray-400">Battery SOC</span>
-                  {renderLedDots(batSoc)}
+                  {batSocValid && renderLedDots(batSoc)}
                 </div>
                 <span className="font-mono font-bold text-emerald-400">
-                  {batSoc}% <span className="text-emerald-300 text-[11px]">({batWatts !== 0 ? `${Math.abs(batWatts)}W / ` : ''}{batAmps} A)</span>
+                  {batSocValid ? `${batSoc}%` : 'N/A'} <span className="text-emerald-300 text-[11px]">({batWatts !== 0 ? `${Math.abs(batWatts)}W / ` : ''}{batAmps} A)</span>
                 </span>
               </div>
 

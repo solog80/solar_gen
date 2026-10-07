@@ -263,32 +263,183 @@ func (c *Client) FetchDeviceSnapshotForDate(deviceSN string, dateStr string) map
 	return nil
 }
 
-// CalculateSOCFromVoltage calculates battery State of Charge % from measured voltage for Incell 14S Li-ion (SLB48-250-146-21).
-// 4 LED dots = 54.2V - 57.0V -> 72% - 92% (in the 70s / 80s range)
-// 3 LED dots = 52.5V - 54.1V -> 55% - 71%
-// 5 LED dots = 57.0V - 58.8V -> 95% - 100%
-func CalculateSOCFromVoltage(v float64) float64 {
-	if v <= 0 {
-		return 78.0
+// --- Battery State-of-Charge (SOC) engine ---------------------------------
+//
+// The Felicity Shine API exposes a BMS-reported SOC (battSoc/emsSoc/emsSocAvg)
+// which is authoritative and is preferred whenever present (values <= 1 are
+// "no data" sentinels). When the BMS reports no usable SOC - for example an
+// offline pack, or an inverter that only mirrors the EMS bus - we fall back to
+// estimating SOC from the measured pack voltage.
+//
+// The voltage->SOC relationship depends on the cell chemistry and the number of
+// series cells in the pack, so the estimate is keyed by device model. Unknown
+// models deliberately return "not available" instead of a fabricated number.
+
+// BatteryModelSpec describes the electrical characteristics of a battery pack.
+type BatteryModelSpec struct {
+	CellCount int        // number of series cells
+	Chemistry string     // "LiFePO4", "NMC", ...
+	RatedAh   float64    // nominal capacity (informational)
+	RatedWh   float64    // nominal energy, used to weight parallel packs
+	Curve     []socPoint // optional model-specific pack-voltage curve
+}
+
+// socPoint is a single (voltage, SOC%) anchor on a curve, ordered by ascending voltage.
+type socPoint struct {
+	v   float64
+	soc float64
+}
+
+// cellSocCurves holds per-cell voltage -> SOC anchor points for each supported
+// chemistry. Used when a model does not define its own pack-voltage curve.
+var cellSocCurves = map[string][]socPoint{
+	// 16S LiFePO4 (LFP): nominal 3.2 V/cell, full ~3.45-3.55 V/cell (56.7 V pack).
+	"LiFePO4": {
+		{2.50, 0}, {3.00, 7}, {3.10, 10}, {3.20, 20}, {3.25, 35},
+		{3.28, 55}, {3.30, 75}, {3.32, 90}, {3.35, 97}, {3.45, 100},
+	},
+	// Li-ion NMC: nominal 3.7 V/cell, full ~4.20 V/cell.
+	"NMC": {
+		{3.00, 0}, {3.30, 5}, {3.50, 15}, {3.60, 30}, {3.70, 50},
+		{3.85, 75}, {4.00, 90}, {4.10, 97}, {4.20, 100},
+	},
+}
+
+// slb48250Curve is the pack-voltage -> SOC curve for the Incell SLB48-250-146-21
+// (14S Li-ion), calibrated to the pack's own 5-dot LED indicator bands:
+//
+//	1 dot  ~47.0-50.0 V | 2 dots ~50.0-52.5 V | 3 dots ~52.5-54.2 V
+//	4 dots ~54.2-57.0 V | 5 dots ~57.0-58.8 V
+var slb48250Curve = []socPoint{
+	{40.0, 0}, {47.0, 15}, {50.0, 35}, {52.5, 55}, {54.2, 72}, {57.0, 92}, {58.8, 100},
+}
+
+// batteryModelRegistry maps battery model strings to their specs. Only models
+// listed here can be estimated from voltage; everything else returns N/A when
+// the BMS does not report an SOC.
+var batteryModelRegistry = map[string]BatteryModelSpec{
+	"FLA48500TG2":      {CellCount: 16, Chemistry: "LiFePO4", RatedAh: 500, RatedWh: 25000}, // Mubende 48V/500Ah
+	"LPBF48200-P":      {CellCount: 16, Chemistry: "LiFePO4", RatedAh: 200, RatedWh: 10000}, // Felicity 48V/200Ah
+	"SLB48-250-146-21": {CellCount: 14, Chemistry: "NMC", RatedAh: 250, RatedWh: 12700, Curve: slb48250Curve}, // Incell 48V/250Ah
+}
+
+// batteryPackSpec describes a battery model and how many units are deployed.
+type batteryPackSpec struct {
+	Model string
+	Count int
+}
+
+// deviceBatteryBanks maps a device serial number to the battery bank physically
+// wired to it, for sites where the individual BMS packs are not exposed as their
+// own devices on the Shine API. The shared inverter DC-bus voltage is interpreted
+// against each pack's own curve, then combined by rated energy.
+var deviceBatteryBanks = map[string][]batteryPackSpec{
+	// Solo Mutungo: 2 x Incell SLB48-250-146-21 in parallel.
+	"01031004822320027": {{Model: "SLB48-250-146-21", Count: 2}},
+	// Luzira: 1 x Incell SLB48-250-146-21 + 1 x Felicity LPBF48200-P in parallel.
+	"010310004824340147": {
+		{Model: "SLB48-250-146-21", Count: 1},
+		{Model: "LPBF48200-P", Count: 1},
+	},
+}
+
+func lookupBatteryModel(model string) (BatteryModelSpec, bool) {
+	key := strings.ToUpper(strings.TrimSpace(model))
+	if key == "" {
+		return BatteryModelSpec{}, false
 	}
-	if v >= 57.0 {
-		return 95.0 + math.Min(5.0, ((v-57.0)/(58.8-57.0))*5.0)
-	} else if v >= 54.2 {
-		// 4 LED dots range (72% - 92%, in the 70s/80s)
-		return 72.0 + ((v-54.2)/(57.0-54.2))*20.0
-	} else if v >= 52.5 {
-		// 3 LED dots range (55% - 71%)
-		return 55.0 + ((v-52.5)/(54.2-52.5))*16.0
-	} else if v >= 50.0 {
-		// 2 LED dots range (35% - 54%)
-		return 35.0 + ((v-50.0)/(52.5-50.0))*19.0
-	} else if v >= 47.0 {
-		// 1 LED dot range (15% - 34%)
-		return 15.0 + ((v-47.0)/(50.0-47.0))*19.0
-	} else if v > 40.0 {
-		return ((v - 40.0) / (47.0 - 40.0)) * 14.0
+	if spec, ok := batteryModelRegistry[key]; ok {
+		return spec, true
 	}
-	return 0.0
+	// Tolerate revision/hardware suffixes on the model string.
+	for prefix, spec := range batteryModelRegistry {
+		if strings.HasPrefix(key, prefix) {
+			return spec, true
+		}
+	}
+	return BatteryModelSpec{}, false
+}
+
+// EstimateBankSOC returns the combined State-of-Charge for a device's battery
+// bank from the shared DC-bus voltage. When the device itself is a known battery
+// its own curve is used; otherwise a bank configured in deviceBatteryBanks is
+// evaluated pack-by-pack and combined by rated energy (parallel packs share
+// voltage but sit at different SOC on their own curves). Returns (0, false) when
+// nothing can be estimated, so callers can render "N/A".
+func EstimateBankSOC(deviceModel, deviceSN string, voltage float64) (float64, bool) {
+	if _, ok := lookupBatteryModel(deviceModel); ok {
+		return EstimateSOCFromVoltage(deviceModel, voltage)
+	}
+	packs, ok := deviceBatteryBanks[strings.ToUpper(strings.TrimSpace(deviceSN))]
+	if !ok || len(packs) == 0 {
+		return 0, false
+	}
+	totalWh := 0.0
+	weighted := 0.0
+	for _, pack := range packs {
+		est, ok := EstimateSOCFromVoltage(pack.Model, voltage)
+		if !ok {
+			continue
+		}
+		spec, ok := lookupBatteryModel(pack.Model)
+		if !ok {
+			continue
+		}
+		count := pack.Count
+		if count < 1 {
+			count = 1
+		}
+		wh := spec.RatedWh * float64(count)
+		if wh <= 0 {
+			continue
+		}
+		weighted += est * wh
+		totalWh += wh
+	}
+	if totalWh <= 0 {
+		return 0, false
+	}
+	return weighted / totalWh, true
+}
+
+func interpolateCurve(curve []socPoint, v float64) (float64, bool) {
+	if len(curve) < 2 {
+		return 0, false
+	}
+	if v <= curve[0].v {
+		return curve[0].soc, true
+	}
+	if v >= curve[len(curve)-1].v {
+		return curve[len(curve)-1].soc, true
+	}
+	for i := 1; i < len(curve); i++ {
+		if v <= curve[i].v {
+			lo, hi := curve[i-1], curve[i]
+			frac := (v - lo.v) / (hi.v - lo.v)
+			return lo.soc + frac*(hi.soc-lo.soc), true
+		}
+	}
+	return curve[len(curve)-1].soc, true
+}
+
+// EstimateSOCFromVoltage returns a State-of-Charge estimate (0-100%) derived
+// from the pack voltage for a known battery model, plus a validity flag. A
+// model-specific curve takes precedence, otherwise the chemistry curve is
+// applied per cell. It returns (0, false) for unknown models or unusable
+// voltages so callers can render "N/A" instead of a fabricated percentage.
+func EstimateSOCFromVoltage(model string, packVoltage float64) (float64, bool) {
+	spec, ok := lookupBatteryModel(model)
+	if !ok || spec.CellCount <= 0 || packVoltage <= 0 {
+		return 0, false
+	}
+	if len(spec.Curve) >= 2 {
+		return interpolateCurve(spec.Curve, packVoltage)
+	}
+	curve, ok := cellSocCurves[spec.Chemistry]
+	if !ok || len(curve) < 2 {
+		return 0, false
+	}
+	return interpolateCurve(curve, packVoltage/float64(spec.CellCount))
 }
 
 func (c *Client) GetTelemetry() TelemetryResponse {
@@ -352,7 +503,8 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 				devLoad := 0.0
 				devBatPower := 0.0
 				devSoc := 0.0
-				devBatVolt := 51.85
+				devSocValid := false
+				devBatVolt := 0.0
 				devTemp := 36.5
 				devVPV := 240.0
 				devPVCurrent := 0.0
@@ -431,18 +583,27 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 						devBatVolt = parseFloat(v)
 					}
 
-					// Parse Battery SOC directly from raw telemetry (battSoc, emsSoc, emsSocAvg)
+					// Parse Battery SOC directly from raw telemetry (battSoc, emsSoc, emsSocAvg).
+					// Values <= 1 are "no data" sentinels, not real percentages.
 					if v, ok := snap["battSoc"]; ok && v != nil && parseFloat(v) > 1 {
 						devSoc = parseFloat(v)
+						devSocValid = true
 					} else if v, ok := snap["emsSoc"]; ok && v != nil && parseFloat(v) > 1 {
 						devSoc = parseFloat(v)
+						devSocValid = true
 					} else if v, ok := snap["emsSocAvg"]; ok && v != nil && parseFloat(v) > 1 {
 						devSoc = parseFloat(v)
+						devSocValid = true
 					}
 
-					// Fallback calculation from voltage ONLY if no valid BMS SOC is present (> 1.0) and device is not an external MPPT controller
-					if devSoc <= 1.0 && devBatVolt > 0 && dev.DeviceType != "MT" {
-						devSoc = math.Round(CalculateSOCFromVoltage(devBatVolt)*10) / 10
+					// Fall back to a model-aware voltage estimate only when the BMS reported no
+					// usable SOC and the device is not an external MPPT controller. Unknown models
+					// leave devSocValid false so the UI shows N/A instead of a fabricated value.
+					if !devSocValid && devBatVolt > 0 && dev.DeviceType != "MT" {
+						if est, ok := EstimateBankSOC(dev.DeviceModel, dev.DeviceSN, devBatVolt); ok {
+							devSoc = math.Round(est*10) / 10
+							devSocValid = true
+						}
 					}
 
 					// Parse raw Battery Power (Watts) from telemetry
@@ -619,6 +780,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 						LoadPowerW:       devLoad,
 						LoadCurrentA:     devLoadCurrent,
 						BatterySoc:       devSoc,
+						BatterySocValid:  devSocValid,
 						BatteryPowerW:    devBatPower,
 						BatteryCurrentA:  devBatCurrent,
 						BatteryVoltageV:  devBatVolt,
@@ -639,18 +801,21 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 						RemainingKWh:     remKWh,
 						HeatStatus:       heatStat,
 					})
-				} else {
-					devSoc = CalculateSOCFromVoltage(devBatVolt)
+				} else if est, ok := EstimateBankSOC(dev.DeviceModel, dev.DeviceSN, devBatVolt); ok {
+					devSoc = math.Round(est*10) / 10
+					devSocValid = true
 				}
 
 				if dev.DeviceType == "BP" {
-					if devSoc > 0 {
+					if devSocValid {
 						bpSocList = append(bpSocList, devSoc)
 						if devSoc > maxBPSoc {
 							maxBPSoc = devSoc
 						}
 						socList = append(socList, devSoc)
-						batVoltList = append(batVoltList, devBatVolt)
+						if devBatVolt > 0 {
+							batVoltList = append(batVoltList, devBatVolt)
+						}
 					}
 				} else {
 					totalPV += devPV
@@ -670,10 +835,12 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 					if devGridVolt > 0 {
 						gridVoltList = append(gridVoltList, devGridVolt)
 					}
-					if devSoc > 0 && dev.DeviceType != "MT" {
+					if devSocValid && dev.DeviceType != "MT" {
 						bpSocList = append(bpSocList, devSoc)
 						socList = append(socList, devSoc)
-						batVoltList = append(batVoltList, devBatVolt)
+						if devBatVolt > 0 {
+							batVoltList = append(batVoltList, devBatVolt)
+						}
 					}
 				}
 
@@ -684,7 +851,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 
 			var primaryBPSoc float64
 			for _, dev := range deviceItems {
-				if dev.Type == "BP" && dev.BatterySoc > 0 {
+				if dev.Type == "BP" && dev.BatterySocValid {
 					if primaryBPSoc == 0 || strings.Contains(strings.ToLower(dev.Alias), "1") {
 						primaryBPSoc = dev.BatterySoc
 						if strings.Contains(strings.ToLower(dev.Alias), "1") {
@@ -694,24 +861,28 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 				}
 			}
 
-			avgSOC := 85.0
+			avgSOC := 0.0
+			socValid := false
 			if primaryBPSoc > 0 {
 				avgSOC = primaryBPSoc
+				socValid = true
 			} else if len(bpSocList) > 0 {
 				sum := 0.0
 				for _, s := range bpSocList {
 					sum += s
 				}
 				avgSOC = math.Round((sum/float64(len(bpSocList)))*10) / 10
+				socValid = true
 			} else if len(socList) > 0 {
 				sum := 0.0
 				for _, s := range socList {
 					sum += s
 				}
 				avgSOC = math.Round((sum/float64(len(socList)))*10) / 10
+				socValid = true
 			}
 
-			avgBatVolt := 51.85
+			avgBatVolt := 0.0
 			if len(batVoltList) > 0 {
 				sumV := 0.0
 				for _, v := range batVoltList {
@@ -794,6 +965,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 			resp.Solar.CurrentA = math.Round(totalPVCurrent*10) / 10
 
 			resp.Battery.SocPercent = avgSOC
+			resp.Battery.SocValid = socValid
 			resp.Battery.PowerW = finalBatPower
 			resp.Battery.VoltageV = avgBatVolt
 			resp.Battery.Status = batStatus
@@ -824,8 +996,8 @@ func (c *Client) GetPreviewTelemetry() TelemetryResponse {
 	t := float64(time.Now().Unix())
 	pvPower := math.Round((2215.0+300.0*math.Sin(t/10.0))*10) / 10
 	loadPower := math.Round((1650.0+200.0*math.Cos(t/15.0))*10) / 10
-	batVolt := 51.85
-	calcSOC := CalculateSOCFromVoltage(batVolt)
+	batVolt := 53.2
+	calcSOC := 74.0 // demo value; preview telemetry has no live BMS data
 
 	var resp TelemetryResponse
 	resp.Timestamp = time.Now().Format("2006-01-02 15:04:05")
@@ -840,6 +1012,7 @@ func (c *Client) GetPreviewTelemetry() TelemetryResponse {
 	resp.Solar.CurrentA = math.Round((pvPower/240.2)*10) / 10
 
 	resp.Battery.SocPercent = calcSOC
+	resp.Battery.SocValid = true
 	resp.Battery.PowerW = -350.0
 	resp.Battery.VoltageV = batVolt
 	resp.Battery.Status = "Charging"
@@ -870,6 +1043,7 @@ func (c *Client) GetPreviewTelemetry() TelemetryResponse {
 			PvVoltageV:      240.0,
 			LoadPowerW:      850.0,
 			BatterySoc:      calcSOC,
+			BatterySocValid: true,
 			BatteryPowerW:   -175.0,
 			CollectorSN:     "090101270024170146",
 			FirmwareVersion: "1.03",
@@ -891,6 +1065,7 @@ func (c *Client) GetPreviewTelemetry() TelemetryResponse {
 			PvVoltageV:      242.0,
 			LoadPowerW:      800.0,
 			BatterySoc:      calcSOC,
+			BatterySocValid: true,
 			BatteryPowerW:   -175.0,
 			CollectorSN:     "090101270024170398",
 			FirmwareVersion: "1.03",
@@ -912,6 +1087,7 @@ func (c *Client) GetPreviewTelemetry() TelemetryResponse {
 			PvVoltageV:      0.0,
 			LoadPowerW:      0.0,
 			BatterySoc:      calcSOC,
+			BatterySocValid: true,
 			BatteryPowerW:   0.0,
 			CollectorSN:     "N/A",
 			FirmwareVersion: "N/A",
@@ -963,7 +1139,7 @@ func FilterTelemetryByPlant(t TelemetryResponse, plantFilter string) TelemetryRe
 			totalLoad += dev.LoadPowerW
 			totalBatPower += dev.BatteryPowerW
 			totalGridPower += dev.GridPowerW
-			if dev.BatterySoc > 0 {
+			if dev.BatterySocValid {
 				socList = append(socList, dev.BatterySoc)
 				if dev.Type == "BP" {
 					bpSocList = append(bpSocList, dev.BatterySoc)
@@ -1011,7 +1187,7 @@ func FilterTelemetryByPlant(t TelemetryResponse, plantFilter string) TelemetryRe
 
 	var primaryBPSoc float64
 	for _, dev := range filtered {
-		if dev.Type == "BP" && dev.BatterySoc > 0 {
+		if dev.Type == "BP" && dev.BatterySocValid {
 			if primaryBPSoc == 0 || strings.Contains(strings.ToLower(dev.Alias), "1") {
 				primaryBPSoc = dev.BatterySoc
 				if strings.Contains(strings.ToLower(dev.Alias), "1") {
@@ -1021,21 +1197,27 @@ func FilterTelemetryByPlant(t TelemetryResponse, plantFilter string) TelemetryRe
 		}
 	}
 
+	socValid := false
+	t.Battery.SocPercent = 0
 	if primaryBPSoc > 0 {
 		t.Battery.SocPercent = primaryBPSoc
+		socValid = true
 	} else if len(bpSocList) > 0 {
 		sumSoc := 0.0
 		for _, s := range bpSocList {
 			sumSoc += s
 		}
 		t.Battery.SocPercent = math.Round((sumSoc/float64(len(bpSocList)))*10) / 10
+		socValid = true
 	} else if len(socList) > 0 {
 		sumSoc := 0.0
 		for _, s := range socList {
 			sumSoc += s
 		}
 		t.Battery.SocPercent = math.Round((sumSoc/float64(len(socList)))*10) / 10
+		socValid = true
 	}
+	t.Battery.SocValid = socValid
 
 	return t
 }

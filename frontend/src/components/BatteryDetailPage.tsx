@@ -82,6 +82,7 @@ export const BatteryDetailPage: React.FC<BatteryDetailPageProps> = ({
   }, [device.sn]);
 
   const batterySoc = Math.round(device.battery_soc || 0);
+  const batterySocValid = device.battery_soc_valid !== false;
   const batteryPower = Math.round(device.battery_power_w || 0);
   const batteryVoltage = device.battery_voltage_v || 51.8;
   const batteryAmps =
@@ -282,7 +283,7 @@ export const BatteryDetailPage: React.FC<BatteryDetailPageProps> = ({
 
           <div className="flex items-baseline justify-between font-mono">
             <div className="text-3xl font-bold text-emerald-400 drop-shadow-[0_0_12px_rgba(16,185,129,0.3)]">
-              {batterySoc}%
+              {batterySocValid ? `${batterySoc}%` : 'N/A'}
             </div>
             <span className={`text-xs font-sans font-bold px-2.5 py-0.5 rounded-full border ${
               batteryPower < 0
@@ -295,7 +296,7 @@ export const BatteryDetailPage: React.FC<BatteryDetailPageProps> = ({
             </span>
           </div>
 
-          {renderLedDots(batterySoc)}
+          {batterySocValid && renderLedDots(batterySoc)}
         </div>
 
         {/* Battery Power & Amps */}

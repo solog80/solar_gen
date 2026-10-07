@@ -27,6 +27,7 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry, onSelectD
     : (telemetry?.devices || []).filter((d) => d.type === 'OG' || d.type === 'HY');
 
   const batterySoc = Math.round(telemetry?.battery?.soc_percent || 0);
+  const batterySocValid = telemetry?.battery?.soc_valid !== false;
   const batteryPower = Math.round(telemetry?.battery?.power_w || 0);
   const batteryVoltage = telemetry?.battery?.voltage_v || 53.5;
   const batteryAmps = batteryVoltage > 0 ? Math.round((Math.abs(batteryPower) / batteryVoltage) * 10) / 10 : 0;
@@ -248,7 +249,7 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry, onSelectD
 
           <div>
             <div className="font-mono text-2xl sm:text-3xl font-bold text-emerald-400 drop-shadow-[0_0_12px_rgba(16,185,129,0.3)] flex items-baseline justify-between">
-              <span>{batterySoc}%</span>
+              <span>{batterySocValid ? `${batterySoc}%` : 'N/A'}</span>
               <span className={`text-xs font-sans font-bold px-2 py-0.5 rounded-full border ${
                 batteryPower < 0
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 animate-pulse'
@@ -259,7 +260,7 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry, onSelectD
                 {batteryPower < 0 ? `Charging (+${Math.abs(batteryPower)} W)` : batteryPower > 0 ? `Discharging (-${batteryPower} W)` : 'Idle'}
               </span>
             </div>
-            {renderLedDots(batterySoc)}
+            {batterySocValid && renderLedDots(batterySoc)}
           </div>
 
           <div className="grid grid-cols-2 gap-2 pt-2.5 sm:pt-3 border-t border-white/5 text-xs">
@@ -479,7 +480,7 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry, onSelectD
                     </span>
                   </h2>
                   <p className="text-xs text-gray-400">
-                    Plant: {telemetry?.plant_info?.name || 'Solo Solar Energy'} — Combined SOC: {batterySoc}%
+                    Plant: {telemetry?.plant_info?.name || 'Solo Solar Energy'} — Combined SOC: {batterySocValid ? `${batterySoc}%` : 'N/A'}
                   </p>
                 </div>
               </div>
@@ -500,6 +501,7 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry, onSelectD
               ) : (
                 batteryUnits.map((dev) => {
                   const bSoc = Math.round(dev.battery_soc || 0);
+                  const bSocValid = dev.battery_soc_valid !== false;
                   const bPower = Math.round(dev.battery_power_w || 0);
                   const bVolt = dev.battery_voltage_v || 53.5;
                   const bAmps = dev.battery_current_a || (bVolt > 0 ? Math.round((Math.abs(bPower) / bVolt) * 10) / 10 : 0);
@@ -519,7 +521,7 @@ export const PlantSummary: React.FC<PlantSummaryProps> = ({ telemetry, onSelectD
                         </div>
 
                         <div className="text-right font-mono">
-                          <span className="text-lg font-bold text-emerald-400">{bSoc}% SOC</span>
+                          <span className="text-lg font-bold text-emerald-400">{bSocValid ? `${bSoc}% SOC` : 'SOC: N/A'}</span>
                           <span className="block text-[10px] text-emerald-300 font-semibold">
                             {bPower < 0 ? `Charging (${Math.abs(bPower)} W)` : bPower > 0 ? `Discharging (${bPower} W)` : `${bAmps} A`}
                           </span>

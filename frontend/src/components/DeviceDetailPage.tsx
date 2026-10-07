@@ -113,11 +113,14 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, allD
   const loadPower = Math.round(device.load_power_w);
   const loadAmps = device.load_current_a || Math.round((loadPower / 230.0) * 10) / 10;
 
-  const primaryBp = (allDevices || []).find((d) => d.type === 'BP' && d.battery_soc > 0 && d.alias.toLowerCase().includes('1'))
-    || (allDevices || []).find((d) => d.type === 'BP' && d.battery_soc > 0);
+  const primaryBp = (allDevices || []).find((d) => d.type === 'BP' && d.battery_soc_valid !== false && d.battery_soc > 0 && d.alias.toLowerCase().includes('1'))
+    || (allDevices || []).find((d) => d.type === 'BP' && d.battery_soc_valid !== false && d.battery_soc > 0);
   const batterySoc = isBattery 
     ? Math.round(device.battery_soc) 
     : (primaryBp ? Math.round(primaryBp.battery_soc) : Math.round(device.battery_soc || 0));
+  const batterySocValid = isBattery
+    ? device.battery_soc_valid !== false
+    : (primaryBp ? primaryBp.battery_soc_valid !== false : device.battery_soc_valid !== false);
 
   const totalPlantBatPower = (allDevices || []).reduce((sum, d) => sum + (d.battery_power_w || 0), 0);
   const batteryPower = (allDevices && allDevices.length > 1 && Math.abs(totalPlantBatPower) > 0)
@@ -480,6 +483,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, allD
           },
           battery: {
             soc_percent: batterySoc,
+            soc_valid: batterySocValid,
             power_w: batteryPower,
             voltage_v: batteryVoltage,
             status: batteryStatus,
@@ -603,7 +607,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, allD
           <div>
             <div className="flex items-baseline justify-between font-mono">
               <div className="text-3xl font-bold text-emerald-400 drop-shadow-[0_0_12px_rgba(16,185,129,0.3)]">
-                {batterySoc}%
+                {batterySocValid ? `${batterySoc}%` : 'N/A'}
               </div>
               <span className={`text-xs font-sans font-bold px-2.5 py-0.5 rounded-full border ${
                 batteryPower < 0
@@ -617,7 +621,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, allD
             </div>
 
             {/* LED Dots Indicator */}
-            {renderLedDots(batterySoc)}
+            {batterySocValid && renderLedDots(batterySoc)}
           </div>
 
           <div className="grid grid-cols-3 gap-1 text-xs pt-2 border-t border-white/5 font-mono">
@@ -901,7 +905,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, allD
                     </span>
                   </h2>
                   <p className="text-xs text-gray-400">
-                    Location: {device.alias} ({device.plant_name || 'Solo Solar Energy'}) — Combined SOC: {batterySoc}%
+                    Location: {device.alias} ({device.plant_name || 'Solo Solar Energy'}) — Combined SOC: {batterySocValid ? `${batterySoc}%` : 'N/A'}
                   </p>
                 </div>
               </div>
@@ -922,6 +926,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, allD
               ) : (
                 batteryUnits.map((dev) => {
                   const bSoc = Math.round(dev.battery_soc || 0);
+                  const bSocValid = dev.battery_soc_valid !== false;
                   const bPower = Math.round(dev.battery_power_w || 0);
                   const bVolt = dev.battery_voltage_v || 53.5;
                   const bAmps = dev.battery_current_a || (bVolt > 0 ? Math.round((Math.abs(bPower) / bVolt) * 10) / 10 : 0);
@@ -941,7 +946,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({ device, allD
                         </div>
 
                         <div className="text-right font-mono">
-                          <span className="text-lg font-bold text-emerald-400">{bSoc}% SOC</span>
+                          <span className="text-lg font-bold text-emerald-400">{bSocValid ? `${bSoc}% SOC` : 'SOC: N/A'}</span>
                           <span className="block text-[10px] text-emerald-300 font-semibold">
                             {bPower < 0 ? `Charging (${Math.abs(bPower)} W)` : bPower > 0 ? `Discharging (${bPower} W)` : `${bAmps} A`}
                           </span>

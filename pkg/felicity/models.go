@@ -73,6 +73,7 @@ type DeviceItem struct {
 	LoadPowerW      float64 `json:"load_power_w"`
 	LoadCurrentA    float64 `json:"load_current_a"`
 	BatterySoc      float64 `json:"battery_soc"`
+	BatterySocValid bool    `json:"battery_soc_valid"`
 	BatteryPowerW   float64 `json:"battery_power_w"`
 	BatteryCurrentA float64 `json:"battery_current_a"`
 	BatteryVoltageV float64 `json:"battery_voltage_v"`
@@ -111,6 +112,7 @@ type TelemetryResponse struct {
 	} `json:"solar"`
 	Battery struct {
 		SocPercent float64 `json:"soc_percent"`
+		SocValid   bool    `json:"soc_valid"`
 		PowerW     float64 `json:"power_w"`
 		VoltageV   float64 `json:"voltage_v"`
 		Status     string  `json:"status"`

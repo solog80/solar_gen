@@ -44,7 +44,9 @@ export const DeviceModal: React.FC<DeviceModalProps> = ({ device, onClose }) => 
 
           <div className="bg-white/5 border border-white/5 rounded-xl p-3">
             <span className="text-[10px] text-gray-400 uppercase tracking-wider block">Battery SOC</span>
-            <span className="font-mono text-xl font-bold text-emerald-400">{Math.round(device.battery_soc)} %</span>
+            <span className="font-mono text-xl font-bold text-emerald-400">
+              {device.battery_soc_valid === false ? 'N/A' : `${Math.round(device.battery_soc)} %`}
+            </span>
           </div>
 
           <div className="bg-white/5 border border-white/5 rounded-xl p-3">

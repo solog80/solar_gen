@@ -295,10 +295,14 @@ func (s *Store) BackfillHistory(days int) (int, error) {
 				soc = felicityParseFloat(v)
 			} else if v, ok := snap["emsVoltage"]; ok && v != nil {
 				batVolt = felicityParseFloat(v)
-				soc = felicity.CalculateSOCFromVoltage(batVolt)
+				if est, ok := felicity.EstimateBankSOC(dev.DeviceModel, dev.DeviceSN, batVolt); ok {
+					soc = est
+				}
 			} else if v, ok := snap["battery_voltage_v"]; ok && v != nil {
 				batVolt = felicityParseFloat(v)
-				soc = felicity.CalculateSOCFromVoltage(batVolt)
+				if est, ok := felicity.EstimateBankSOC(dev.DeviceModel, dev.DeviceSN, batVolt); ok {
+					soc = est
+				}
 			}
 
 			// Generate 24 hourly data points for this backfilled day

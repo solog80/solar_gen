@@ -14,6 +14,7 @@ export interface DeviceItem {
   load_power_w: number;
   load_current_a?: number;
   battery_soc: number;
+  battery_soc_valid?: boolean;
   battery_power_w: number;
   battery_current_a?: number;
   battery_voltage_v?: number;
@@ -51,6 +52,7 @@ export interface TelemetryResponse {
   };
   battery: {
     soc_percent: number;
+    soc_valid?: boolean;
     power_w: number;
     voltage_v: number;
     status: string;

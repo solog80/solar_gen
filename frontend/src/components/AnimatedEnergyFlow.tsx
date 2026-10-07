@@ -40,6 +40,7 @@ export const AnimatedEnergyFlow: React.FC<AnimatedEnergyFlowProps> = ({
   const gridStatus = telemetry?.grid?.status || (gridVoltage > 90 ? 'Connected' : 'Disconnected');
   const isGridConnected = gridStatus === 'Connected' || gridVoltage > 90;
   const batterySoc = Math.round(telemetry?.battery?.soc_percent || 0);
+  const batterySocValid = telemetry?.battery?.soc_valid !== false;
 
   const isCharging = batteryPower < 0;
   const isDischarging = batteryPower > 0;
@@ -356,7 +357,7 @@ export const AnimatedEnergyFlow: React.FC<AnimatedEnergyFlowProps> = ({
                   <span className="text-xs font-sans font-normal text-emerald-300">W</span>
                 </div>
                 <div className="text-[10px] font-mono text-emerald-300/90 font-bold">
-                  {batterySoc}% SOC
+                  {batterySocValid ? `${batterySoc}% SOC` : 'SOC: N/A'}
                 </div>
               </div>
             </div>
@@ -421,7 +422,7 @@ export const AnimatedEnergyFlow: React.FC<AnimatedEnergyFlowProps> = ({
               <span>Battery Bank</span>
             </div>
             <div className="font-mono text-xl font-bold text-emerald-400">
-              {batterySoc}% <span className="text-xs font-sans font-normal text-emerald-300">SOC</span>
+              {batterySocValid ? `${batterySoc}%` : 'N/A'} <span className="text-xs font-sans font-normal text-emerald-300">SOC</span>
             </div>
           </div>
 
