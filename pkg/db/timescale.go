@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,6 +20,34 @@ type Store struct {
 	client      *felicity.Client
 	lastSaved   map[string]time.Time
 	lastSavedMu sync.Mutex
+
+	// Tariff configuration (env-driven, see NewStore).
+	touOffPeak    float64 // TOU_OFFPEAK_UGX
+	touDay        float64 // TOU_DAY_UGX
+	touPeak       float64 // TOU_PEAK_UGX
+	peakStartHour int     // TOU_PEAK_START
+	dayStartHour  int     // TOU_DAY_START
+	usdRate       float64 // USD_UGX_RATE
+}
+
+func envFloat(key string, def float64) float64 {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
+		}
+		log.Printf("[Config] Invalid %s=%q, using default %.2f", key, v, def)
+	}
+	return def
+}
+
+func envInt(key string, def int) int {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		if i, err := strconv.Atoi(v); err == nil {
+			return i
+		}
+		log.Printf("[Config] Invalid %s=%q, using default %d", key, v, def)
+	}
+	return def
 }
 
 type SavingsAnalytics struct {
@@ -61,9 +90,18 @@ func NewStore(connStr string, client *felicity.Client) (*Store, error) {
 	}
 
 	store := &Store{
-		db:        db,
-		client:    client,
-		lastSaved: make(map[string]time.Time),
+		db:            db,
+		client:        client,
+		lastSaved:     make(map[string]time.Time),
+		touOffPeak:    envFloat("TOU_OFFPEAK_UGX", 414.00),
+		touDay:        envFloat("TOU_DAY_UGX", 546.00),
+		touPeak:       envFloat("TOU_PEAK_UGX", 650.50),
+		peakStartHour: envInt("TOU_PEAK_START", 18),
+		dayStartHour:  envInt("TOU_DAY_START", 6),
+		usdRate:       envFloat("USD_UGX_RATE", 4050.0),
+	}
+	if store.usdRate <= 0 {
+		store.usdRate = 4050.0
 	}
 	store.InitSchema()
 	return store, nil
@@ -105,8 +143,23 @@ func (s *Store) InitSchema() {
 		created_at TIMESTAMPTZ DEFAULT NOW()
 	);
 	ALTER TABLE dashboard_users ADD COLUMN IF NOT EXISTS allowed_plant TEXT DEFAULT '';
+
+	CREATE TABLE IF NOT EXISTS tariff_periods (
+		id SERIAL PRIMARY KEY,
+		effective_from TIMESTAMPTZ NOT NULL,
+		peak_ugx DOUBLE PRECISION NOT NULL,
+		day_ugx DOUBLE PRECISION NOT NULL,
+		offpeak_ugx DOUBLE PRECISION NOT NULL,
+		peak_start_hour INT NOT NULL DEFAULT 18,
+		day_start_hour INT NOT NULL DEFAULT 6,
+		usd_rate DOUBLE PRECISION NOT NULL DEFAULT 4050,
+		created_at TIMESTAMPTZ DEFAULT NOW()
+	);
+	CREATE INDEX IF NOT EXISTS idx_tariff_periods_effective ON tariff_periods (effective_from);
 	`
 	_, _ = s.db.Exec(query)
+
+	s.seedTariffs()
 
 	// Seed default admin and plant-restricted accounts
 	log.Println("[TimescaleDB] Seeding default dashboard users (solo, viewer, saltmedia)...")
@@ -118,6 +171,72 @@ func (s *Store) InitSchema() {
 		('saltmedia', 'saltmedia2026', 'viewer', 'Salt Media')
 		ON CONFLICT (username) DO UPDATE SET allowed_plant = EXCLUDED.allowed_plant;
 	`)
+}
+
+// seedTariffs keeps the effective-dated tariff table in sync with the configured
+// (env) values. The first run inserts a bootstrap period covering all history.
+// Later runs, when the configured values change, either update today's period or
+// insert a new one effective from the start of today (EAT) - so already-recorded
+// history keeps the rates that applied when it was captured.
+func (s *Store) seedTariffs() {
+	if s.db == nil {
+		return
+	}
+
+	var (
+		latestID      int
+		latestFrom    time.Time
+		lPeak, lDay   float64
+		lOff, lUsd    float64
+		lPeakH, lDayH int
+	)
+	err := s.db.QueryRow(`
+		SELECT id, effective_from, peak_ugx, day_ugx, offpeak_ugx, peak_start_hour, day_start_hour, usd_rate
+		FROM tariff_periods ORDER BY effective_from DESC, id DESC LIMIT 1
+	`).Scan(&latestID, &latestFrom, &lPeak, &lDay, &lOff, &lPeakH, &lDayH, &lUsd)
+
+	today := time.Now().In(felicity.EATLocation)
+	todayStart := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, felicity.EATLocation)
+
+	if err == sql.ErrNoRows {
+		if _, e := s.db.Exec(`
+			INSERT INTO tariff_periods (effective_from, peak_ugx, day_ugx, offpeak_ugx, peak_start_hour, day_start_hour, usd_rate)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, time.Date(2024, 1, 1, 0, 0, 0, 0, felicity.EATLocation), s.touPeak, s.touDay, s.touOffPeak, s.peakStartHour, s.dayStartHour, s.usdRate); e == nil {
+			log.Printf("[TimescaleDB] Seeded initial tariff period (peak %.2f / day %.2f / off-peak %.2f, USD %.0f)",
+				s.touPeak, s.touDay, s.touOffPeak, s.usdRate)
+		}
+		return
+	}
+	if err != nil {
+		log.Printf("[TimescaleDB] tariff seed read error: %v", err)
+		return
+	}
+
+	unchanged := lPeak == s.touPeak && lDay == s.touDay && lOff == s.touOffPeak &&
+		lPeakH == s.peakStartHour && lDayH == s.dayStartHour && lUsd == s.usdRate
+	if unchanged {
+		return
+	}
+
+	if !latestFrom.Before(todayStart) {
+		// A period already starts today - update it in place (no history affected).
+		_, _ = s.db.Exec(`
+			UPDATE tariff_periods SET peak_ugx=$2, day_ugx=$3, offpeak_ugx=$4, peak_start_hour=$5, day_start_hour=$6, usd_rate=$7
+			WHERE id=$1
+		`, latestID, s.touPeak, s.touDay, s.touOffPeak, s.peakStartHour, s.dayStartHour, s.usdRate)
+		log.Printf("[TimescaleDB] Updated today's tariff period (peak %.2f / day %.2f / off-peak %.2f, USD %.0f)",
+			s.touPeak, s.touDay, s.touOffPeak, s.usdRate)
+		return
+	}
+
+	if _, e := s.db.Exec(`
+		INSERT INTO tariff_periods (effective_from, peak_ugx, day_ugx, offpeak_ugx, peak_start_hour, day_start_hour, usd_rate)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, todayStart, s.touPeak, s.touDay, s.touOffPeak, s.peakStartHour, s.dayStartHour, s.usdRate); e == nil {
+		log.Printf("[TimescaleDB] New tariff period from %s (peak %.2f / day %.2f / off-peak %.2f, USD %.0f) - history preserved",
+			todayStart.Format("2006-01-02"), s.touPeak, s.touDay, s.touOffPeak, s.usdRate)
+	}
 }
 
 func (s *Store) AuthenticateDashboardUser(username, password string) (*DashboardUser, error) {
@@ -353,9 +472,11 @@ const telemetryWhere = `($4 != '' OR $1 = '' OR device_sn = $1)
 
 // Energy accounting per plant interval, shared by the analytics + breakdown queries.
 // Devices sharing a save timestamp are summed first (per_time); each interval is then
-// valued at its Time-of-Use tariff. Savings = avoided grid import = load minus grid
-// import (signed: grid-charging intervals count negative), split into the direct-solar
-// portion and the battery residual.
+// valued at the Time-of-Use tariff in effect at that time (tariff_periods), so changing
+// tariffs never rewrites history. $5..$10 are the configured env values, used only as a
+// fallback when no tariff period covers the interval. Savings = avoided grid import =
+// load minus grid import (signed: grid-charging intervals count negative), split into
+// the direct-solar portion and the battery residual.
 const intervalEnergyCTE = `
 		per_time AS (
 			SELECT
@@ -369,34 +490,53 @@ const intervalEnergyCTE = `
 		),
 		enriched AS (
 			SELECT
-				time,
-				GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - LAG(time) OVER (ORDER BY time))) / 3600.0)) AS dt_h,
-				GREATEST(0.0, pv_w)   AS pv,
-				GREATEST(0.0, load_w) AS load,
-				GREATEST(0.0, grid_w) AS grid,
+				p.time,
+				GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (p.time - LAG(p.time) OVER (ORDER BY p.time))) / 3600.0)) AS dt_h,
+				GREATEST(0.0, p.pv_w)   AS pv,
+				GREATEST(0.0, p.load_w) AS load,
+				GREATEST(0.0, p.grid_w) AS grid,
+				COALESCE(t.peak_start_hour, $8::int) AS peak_start_hour,
+				COALESCE(t.day_start_hour, $9::int)  AS day_start_hour,
+				COALESCE(t.peak_ugx, $5::double precision)    AS peak_ugx,
+				COALESCE(t.day_ugx, $6::double precision)     AS day_ugx,
+				COALESCE(t.offpeak_ugx, $7::double precision) AS offpeak_ugx,
+				GREATEST(1.0, COALESCE(t.usd_rate, $10::double precision)) AS usd_rate
+			FROM per_time p
+			LEFT JOIN LATERAL (
+				SELECT peak_ugx, day_ugx, offpeak_ugx, peak_start_hour, day_start_hour, usd_rate
+				FROM tariff_periods tp
+				WHERE tp.effective_from <= p.time
+				ORDER BY tp.effective_from DESC, tp.id DESC
+				LIMIT 1
+			) t ON true
+		),
+		rated AS (
+			SELECT
+				time, dt_h, pv, load, grid, usd_rate,
 				CASE
-					WHEN EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= 18 THEN 650.50
-					WHEN EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= 6  THEN 546.00
-					ELSE 414.00
+					WHEN EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= peak_start_hour THEN peak_ugx
+					WHEN EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= day_start_hour  THEN day_ugx
+					ELSE offpeak_ugx
 				END AS tou_rate,
-				(EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= 18) AS is_peak
-			FROM per_time
+				(EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= peak_start_hour) AS is_peak
+			FROM enriched
 		),
 		calc AS (
 			SELECT
-				time, tou_rate, is_peak,
+				time, tou_rate, is_peak, usd_rate,
 				(pv   * dt_h / 1000.0) AS solar_kwh,
 				(load * dt_h / 1000.0) AS load_kwh,
 				(grid * dt_h / 1000.0) AS grid_kwh,
 				((load - grid) * dt_h / 1000.0) AS nongrid_kwh,
 				(LEAST(pv, load) * dt_h / 1000.0) AS solar_to_load_kwh
-			FROM enriched
+			FROM rated
 		),
 		derived AS (
 			SELECT
-				time, tou_rate, is_peak,
+				time, tou_rate, is_peak, usd_rate,
 				solar_kwh, load_kwh, grid_kwh, nongrid_kwh, solar_to_load_kwh,
-				nongrid_kwh - solar_to_load_kwh AS battery_kwh
+				nongrid_kwh - solar_to_load_kwh AS battery_kwh,
+				(nongrid_kwh * tou_rate / usd_rate) AS nongrid_usd
 			FROM calc
 		)`
 
@@ -420,25 +560,26 @@ func (s *Store) GetAnalytics(deviceSN string, plant string, startDate string, en
 			COALESCE(SUM(CASE WHEN is_peak THEN nongrid_kwh * tou_rate ELSE 0.0 END), 0.0),
 			COALESCE(SUM(CASE WHEN NOT is_peak THEN nongrid_kwh * tou_rate ELSE 0.0 END), 0.0),
 			COALESCE(SUM(grid_kwh * tou_rate), 0.0),
+			COALESCE(SUM(nongrid_usd), 0.0),
 			(SELECT COUNT(*) FROM felicity_solar_telemetry WHERE ` + telemetryWhere + `),
 			COALESCE(MIN(time)::text, ''),
 			COALESCE(MAX(time)::text, '')
 		FROM derived
 	`
 
-	row := s.db.QueryRow(query, deviceSN, startDate, endDate, plant)
+	row := s.db.QueryRow(query, deviceSN, startDate, endDate, plant,
+		s.touPeak, s.touDay, s.touOffPeak, s.peakStartHour, s.dayStartHour, s.usdRate)
 	err := row.Scan(
 		&a.TotalSolarKWh, &a.TotalLoadKWh, &a.TotalGridKWh,
 		&a.SelfConsumedKWh, &a.BatteryUsedKWh, &a.AvoidedImportKWh,
 		&a.SolarSavingsUGX, &a.BatterySavingsUGX,
 		&a.PeakSavingsUGX, &a.OffPeakSavingsUGX, &a.GridCostUGX,
+		&a.TotalSavingsUSD,
 		&a.RecordCount, &a.EarliestRecord, &a.LatestRecord,
 	)
 	if err != nil {
 		return a, err
 	}
-
-	const UGXToUSD = 3700.0
 
 	a.TotalSolarKWh = math.Round(a.TotalSolarKWh*100) / 100
 	a.TotalLoadKWh = math.Round(a.TotalLoadKWh*100) / 100
@@ -451,11 +592,11 @@ func (s *Store) GetAnalytics(deviceSN string, plant string, startDate string, en
 	a.PeakSavingsUGX = math.Round(a.PeakSavingsUGX)
 	a.OffPeakSavingsUGX = math.Round(a.OffPeakSavingsUGX)
 	a.GridCostUGX = math.Round(a.GridCostUGX)
+	a.TotalSavingsUSD = math.Round(a.TotalSavingsUSD*100) / 100
 
 	// Headline = avoided grid import (direct solar + battery discharge) valued at
 	// the hour it was consumed. Grid cost is reported separately as the actual bill.
 	a.TotalSavingsUGX = math.Round(a.SolarSavingsUGX + a.BatterySavingsUGX)
-	a.TotalSavingsUSD = math.Round((a.TotalSavingsUGX/UGXToUSD)*100) / 100
 
 	if a.TotalLoadKWh > 0 {
 		a.SolarSelfSuffPct = math.Max(0.0, math.Min(100.0, math.Round((a.SelfConsumedKWh/a.TotalLoadKWh)*1000)/10))
@@ -511,23 +652,23 @@ func (s *Store) GetPeriodBreakdown(deviceSN string, plant string, period string,
 			COALESCE(SUM(solar_to_load_kwh * tou_rate) + SUM(battery_kwh * tou_rate), 0.0) AS savings_ugx,
 			COALESCE(SUM(solar_to_load_kwh), 0.0),
 			COALESCE(SUM(battery_kwh), 0.0),
-			COALESCE(SUM(grid_kwh * tou_rate), 0.0)
+			COALESCE(SUM(grid_kwh * tou_rate), 0.0),
+			COALESCE(SUM(nongrid_usd), 0.0)
 		FROM bucketed
 		GROUP BY period_label
 		ORDER BY period_label DESC
 		LIMIT ` + strconv.Itoa(limitVal)
 
-	rows, err := s.db.Query(query, deviceSN, startDate, endDate, plant)
+	rows, err := s.db.Query(query, deviceSN, startDate, endDate, plant,
+		s.touPeak, s.touDay, s.touOffPeak, s.peakStartHour, s.dayStartHour, s.usdRate)
 	if err != nil {
 		return resp, err
 	}
 	defer rows.Close()
 
-	const UGXToUSD = 3700.0
-
 	for rows.Next() {
 		var item felicity.PeriodItem
-		if err := rows.Scan(&item.PeriodLabel, &item.SolarKWh, &item.LoadKWh, &item.GridKWh, &item.SavingsUGX, &item.SelfConsumedKWh, &item.BatteryUsedKWh, &item.GridCostUGX); err == nil {
+		if err := rows.Scan(&item.PeriodLabel, &item.SolarKWh, &item.LoadKWh, &item.GridKWh, &item.SavingsUGX, &item.SelfConsumedKWh, &item.BatteryUsedKWh, &item.GridCostUGX, &item.SavingsUSD); err == nil {
 			item.SolarKWh = math.Round(item.SolarKWh*100) / 100
 			item.LoadKWh = math.Round(item.LoadKWh*100) / 100
 			item.GridKWh = math.Round(item.GridKWh*100) / 100
@@ -535,7 +676,7 @@ func (s *Store) GetPeriodBreakdown(deviceSN string, plant string, period string,
 			item.BatteryUsedKWh = math.Round(item.BatteryUsedKWh*100) / 100
 			item.GridCostUGX = math.Round(item.GridCostUGX)
 			item.SavingsUGX = math.Round(item.SavingsUGX)
-			item.SavingsUSD = math.Round((item.SavingsUGX/UGXToUSD)*100) / 100
+			item.SavingsUSD = math.Round(item.SavingsUSD*100) / 100
 			resp.Items = append(resp.Items, item)
 		}
 	}
