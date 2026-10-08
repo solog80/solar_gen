@@ -58,29 +58,29 @@ type DeviceSnapshotResponse struct {
 
 // DeviceItem processed for frontend telemetry.
 type DeviceItem struct {
-	SN              string  `json:"sn"`
-	Alias           string  `json:"alias"`
-	Model           string  `json:"model"`
-	Type            string  `json:"type"`
-	TypeName        string  `json:"type_name"`
-	Status          string  `json:"status"`
-	RatedPowerKW    string  `json:"rated_power_kw"`
-	Country         string  `json:"country"`
-	TimeZone        string  `json:"timezone"`
-	PvPowerW        float64 `json:"pv_power_w"`
-	PvVoltageV      float64 `json:"pv_voltage_v"`
-	PvCurrentA      float64 `json:"pv_current_a"`
-	LoadPowerW      float64 `json:"load_power_w"`
-	LoadCurrentA    float64 `json:"load_current_a"`
-	BatterySoc      float64 `json:"battery_soc"`
-	BatterySocValid bool    `json:"battery_soc_valid"`
-	BatteryPowerW   float64 `json:"battery_power_w"`
-	BatteryCurrentA float64 `json:"battery_current_a"`
-	BatteryVoltageV float64 `json:"battery_voltage_v"`
-	GridPowerW      float64 `json:"grid_power_w"`
-	GridVoltageV    float64 `json:"grid_voltage_v"`
-	CollectorSN     string  `json:"collector_sn"`
-	FirmwareVersion string  `json:"firmware_version"`
+	SN              string    `json:"sn"`
+	Alias           string    `json:"alias"`
+	Model           string    `json:"model"`
+	Type            string    `json:"type"`
+	TypeName        string    `json:"type_name"`
+	Status          string    `json:"status"`
+	RatedPowerKW    string    `json:"rated_power_kw"`
+	Country         string    `json:"country"`
+	TimeZone        string    `json:"timezone"`
+	PvPowerW        float64   `json:"pv_power_w"`
+	PvVoltageV      float64   `json:"pv_voltage_v"`
+	PvCurrentA      float64   `json:"pv_current_a"`
+	LoadPowerW      float64   `json:"load_power_w"`
+	LoadCurrentA    float64   `json:"load_current_a"`
+	BatterySoc      float64   `json:"battery_soc"`
+	BatterySocValid bool      `json:"battery_soc_valid"`
+	BatteryPowerW   float64   `json:"battery_power_w"`
+	BatteryCurrentA float64   `json:"battery_current_a"`
+	BatteryVoltageV float64   `json:"battery_voltage_v"`
+	GridPowerW      float64   `json:"grid_power_w"`
+	GridVoltageV    float64   `json:"grid_voltage_v"`
+	CollectorSN     string    `json:"collector_sn"`
+	FirmwareVersion string    `json:"firmware_version"`
 	PlantName       string    `json:"plant_name"`
 	PlantID         string    `json:"plant_id"`
 	ID              string    `json:"id"`
@@ -145,12 +145,15 @@ type HistoryPoint struct {
 }
 
 type PeriodItem struct {
-	PeriodLabel string  `json:"period_label"`
-	SolarKWh    float64 `json:"solar_kwh"`
-	LoadKWh     float64 `json:"load_kwh"`
-	GridKWh     float64 `json:"grid_kwh"`
-	SavingsUGX  float64 `json:"savings_ugx"`
-	SavingsUSD  float64 `json:"savings_usd"`
+	PeriodLabel     string  `json:"period_label"`
+	SolarKWh        float64 `json:"solar_kwh"`
+	LoadKWh         float64 `json:"load_kwh"`
+	GridKWh         float64 `json:"grid_kwh"`
+	SelfConsumedKWh float64 `json:"self_consumed_solar_kwh"`
+	BatteryUsedKWh  float64 `json:"battery_used_kwh"`
+	GridCostUGX     float64 `json:"grid_cost_ugx"`
+	SavingsUGX      float64 `json:"savings_ugx"`
+	SavingsUSD      float64 `json:"savings_usd"`
 }
 
 type PeriodBreakdownResponse struct {

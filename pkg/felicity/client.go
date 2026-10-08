@@ -318,8 +318,8 @@ var slb48250Curve = []socPoint{
 // listed here can be estimated from voltage; everything else returns N/A when
 // the BMS does not report an SOC.
 var batteryModelRegistry = map[string]BatteryModelSpec{
-	"FLA48500TG2":      {CellCount: 16, Chemistry: "LiFePO4", RatedAh: 500, RatedWh: 25000}, // Mubende 48V/500Ah
-	"LPBF48200-P":      {CellCount: 16, Chemistry: "LiFePO4", RatedAh: 200, RatedWh: 10000}, // Felicity 48V/200Ah
+	"FLA48500TG2":      {CellCount: 16, Chemistry: "LiFePO4", RatedAh: 500, RatedWh: 25000},                   // Mubende 48V/500Ah
+	"LPBF48200-P":      {CellCount: 16, Chemistry: "LiFePO4", RatedAh: 200, RatedWh: 10000},                   // Felicity 48V/200Ah
 	"SLB48-250-146-21": {CellCount: 14, Chemistry: "NMC", RatedAh: 250, RatedWh: 12700, Curve: slb48250Curve}, // Incell 48V/250Ah
 }
 
@@ -537,7 +537,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 					if v, ok := snap["acROutCurr"]; ok && v != nil && parseFloat(v) > 0 {
 						devLoadCurrent = parseFloat(v)
 					} else if devLoadVolt > 0 {
-						devLoadCurrent = math.Round((devLoad / devLoadVolt)*10) / 10
+						devLoadCurrent = math.Round((devLoad/devLoadVolt)*10) / 10
 					}
 
 					if v, ok := snap["acROutFreq"]; ok && v != nil && parseFloat(v) > 0 {
@@ -623,7 +623,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 					} else if v, ok := snap["battCurr"]; ok && v != nil && math.Abs(parseFloat(v)) > 0 {
 						devBatCurrent = math.Abs(parseFloat(v))
 					} else if devBatVolt > 0 && rawBatPower > 0 {
-						devBatCurrent = math.Round((rawBatPower / devBatVolt)*10) / 10
+						devBatCurrent = math.Round((rawBatPower/devBatVolt)*10) / 10
 					}
 
 					// Set battery power sign: Positive = Discharging, Negative = Charging
@@ -652,7 +652,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 
 					// Fallback calculation for battery current if missing
 					if devBatCurrent == 0 && devBatVolt > 0 && math.Abs(devBatPower) > 0 {
-						devBatCurrent = math.Round((math.Abs(devBatPower) / devBatVolt)*10) / 10
+						devBatCurrent = math.Round((math.Abs(devBatPower)/devBatVolt)*10) / 10
 					}
 
 					// Parse PV Voltage first from raw telemetry
@@ -666,7 +666,7 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 					} else if v, ok := snap["pvCurr"]; ok && v != nil && parseFloat(v) > 0 {
 						devPVCurrent = parseFloat(v)
 					} else if devVPV > 0 {
-						devPVCurrent = math.Round((devPV / devVPV)*10) / 10
+						devPVCurrent = math.Round((devPV/devVPV)*10) / 10
 					}
 
 					// Parse Temperature
@@ -765,41 +765,41 @@ func (c *Client) GetTelemetry() TelemetryResponse {
 					}
 
 					deviceItems = append(deviceItems, DeviceItem{
-						SN:               sn,
-						Alias:            alias,
-						Model:            dev.DeviceModel,
-						Type:             dev.DeviceType,
-						TypeName:         typeName,
-						Status:           dev.Status,
-						RatedPowerKW:     dev.RatedPower,
-						Country:          dev.CountryName,
-						TimeZone:         dev.TimeZone,
-						PvPowerW:         devPV,
-						PvVoltageV:       devVPV,
-						PvCurrentA:       devPVCurrent,
-						LoadPowerW:       devLoad,
-						LoadCurrentA:     devLoadCurrent,
-						BatterySoc:       devSoc,
-						BatterySocValid:  devSocValid,
-						BatteryPowerW:    devBatPower,
-						BatteryCurrentA:  devBatCurrent,
-						BatteryVoltageV:  devBatVolt,
-						GridPowerW:       devGridPower,
-						GridVoltageV:     devGridVolt,
-						CollectorSN:      dev.CollectorSN,
-						FirmwareVersion:  dev.ModuleVersion,
-						PlantName:        dev.PlantName,
-						PlantID:          dev.PlantID,
-						ID:               dev.ID,
-						CellVoltages:     cellVolts,
-						CellTemps:        cellTemps,
-						MaxCellVoltMV:    maxCellMV,
-						MinCellVoltMV:    minCellMV,
-						MaxCellNum:       maxCellNum,
-						MinCellNum:       minCellNum,
-						SOHPercent:       soh,
-						RemainingKWh:     remKWh,
-						HeatStatus:       heatStat,
+						SN:              sn,
+						Alias:           alias,
+						Model:           dev.DeviceModel,
+						Type:            dev.DeviceType,
+						TypeName:        typeName,
+						Status:          dev.Status,
+						RatedPowerKW:    dev.RatedPower,
+						Country:         dev.CountryName,
+						TimeZone:        dev.TimeZone,
+						PvPowerW:        devPV,
+						PvVoltageV:      devVPV,
+						PvCurrentA:      devPVCurrent,
+						LoadPowerW:      devLoad,
+						LoadCurrentA:    devLoadCurrent,
+						BatterySoc:      devSoc,
+						BatterySocValid: devSocValid,
+						BatteryPowerW:   devBatPower,
+						BatteryCurrentA: devBatCurrent,
+						BatteryVoltageV: devBatVolt,
+						GridPowerW:      devGridPower,
+						GridVoltageV:    devGridVolt,
+						CollectorSN:     dev.CollectorSN,
+						FirmwareVersion: dev.ModuleVersion,
+						PlantName:       dev.PlantName,
+						PlantID:         dev.PlantID,
+						ID:              dev.ID,
+						CellVoltages:    cellVolts,
+						CellTemps:       cellTemps,
+						MaxCellVoltMV:   maxCellMV,
+						MinCellVoltMV:   minCellMV,
+						MaxCellNum:      maxCellNum,
+						MinCellNum:      minCellNum,
+						SOHPercent:      soh,
+						RemainingKWh:    remKWh,
+						HeatStatus:      heatStat,
 					})
 				} else if est, ok := EstimateBankSOC(dev.DeviceModel, dev.DeviceSN, devBatVolt); ok {
 					devSoc = math.Round(est*10) / 10
@@ -1131,9 +1131,9 @@ func FilterTelemetryByPlant(t TelemetryResponse, plantFilter string) TelemetryRe
 	var socList []float64
 
 	for _, dev := range t.Devices {
-		if strings.EqualFold(dev.PlantName, plantFilter) || 
-		   strings.Contains(strings.ToLower(dev.PlantName), strings.ToLower(plantFilter)) ||
-		   strings.Contains(strings.ToLower(dev.Alias), strings.ToLower(plantFilter)) {
+		if strings.EqualFold(dev.PlantName, plantFilter) ||
+			strings.Contains(strings.ToLower(dev.PlantName), strings.ToLower(plantFilter)) ||
+			strings.Contains(strings.ToLower(dev.Alias), strings.ToLower(plantFilter)) {
 			filtered = append(filtered, dev)
 			totalPV += dev.PvPowerW
 			totalLoad += dev.LoadPowerW

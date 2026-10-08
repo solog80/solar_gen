@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	_ "github.com/lib/pq"
 	"felicity_solar_dashboard/pkg/felicity"
+	_ "github.com/lib/pq"
 )
 
 type Store struct {
@@ -21,15 +22,23 @@ type Store struct {
 }
 
 type SavingsAnalytics struct {
-	TotalSolarKWh    float64 `json:"total_solar_kwh"`
-	TotalLoadKWh     float64 `json:"total_load_kwh"`
-	TotalGridKWh     float64 `json:"total_grid_kwh"`
-	TotalSavingsUGX  float64 `json:"total_savings_ugx"`
-	TotalSavingsUSD  float64 `json:"total_savings_usd"`
-	SolarSelfSuffPct float64 `json:"solar_self_sufficiency_pct"`
-	RecordCount      int64   `json:"total_records_synced"`
-	EarliestRecord   string  `json:"earliest_record"`
-	LatestRecord     string  `json:"latest_record"`
+	TotalSolarKWh     float64 `json:"total_solar_kwh"`
+	TotalLoadKWh      float64 `json:"total_load_kwh"`
+	TotalGridKWh      float64 `json:"total_grid_kwh"`
+	SelfConsumedKWh   float64 `json:"self_consumed_solar_kwh"`
+	BatteryUsedKWh    float64 `json:"battery_used_kwh"`
+	AvoidedImportKWh  float64 `json:"avoided_import_kwh"`
+	SolarSavingsUGX   float64 `json:"solar_savings_ugx"`
+	BatterySavingsUGX float64 `json:"battery_savings_ugx"`
+	PeakSavingsUGX    float64 `json:"peak_savings_ugx"`
+	OffPeakSavingsUGX float64 `json:"off_peak_savings_ugx"`
+	GridCostUGX       float64 `json:"grid_cost_ugx"`
+	TotalSavingsUGX   float64 `json:"total_savings_ugx"`
+	TotalSavingsUSD   float64 `json:"total_savings_usd"`
+	SolarSelfSuffPct  float64 `json:"solar_self_sufficiency_pct"`
+	RecordCount       int64   `json:"total_records_synced"`
+	EarliestRecord    string  `json:"earliest_record"`
+	LatestRecord      string  `json:"latest_record"`
 }
 
 func NewStore(connStr string, client *felicity.Client) (*Store, error) {
@@ -309,14 +318,14 @@ func (s *Store) BackfillHistory(days int) (int, error) {
 			dayStart, _ := time.Parse("2006-01-02", dateStr)
 			for h := 0; h < 24; h++ {
 				tPoint := dayStart.Add(time.Duration(h) * time.Hour)
-				
+
 				pvH := 0.0
 				if h >= 6 && h <= 18 && pv > 0 {
 					pvH = math.Round((pv*math.Sin(math.Pi*float64(h-6)/12.0))*10) / 10
 				}
-				loadH := math.Round((load* (0.8 + 0.4*math.Sin(float64(h)/3.0)))*10) / 10
-				socH := math.Max(15.0, math.Min(100.0, math.Round((soc + 3.0*math.Sin(float64(h-7)/4.0))*10)/10))
-				batPowerH := math.Round((loadH - pvH)*10) / 10
+				loadH := math.Round((load*(0.8+0.4*math.Sin(float64(h)/3.0)))*10) / 10
+				socH := math.Max(15.0, math.Min(100.0, math.Round((soc+3.0*math.Sin(float64(h-7)/4.0))*10)/10))
+				batPowerH := math.Round((loadH-pvH)*10) / 10
 
 				_, err := s.db.Exec(`
 					INSERT INTO felicity_solar_telemetry (time, device_sn, alias, pv_power_w, load_power_w, battery_soc, battery_power_w, grid_power_w)
@@ -335,6 +344,62 @@ func (s *Store) BackfillHistory(days int) (int, error) {
 	return totalInserted, nil
 }
 
+// telemetryWhere is the shared analytics filter. Placeholders:
+// $1 = device SN (optional), $2 = start date, $3 = end date, $4 = plant (optional).
+const telemetryWhere = `($4 != '' OR $1 = '' OR device_sn = $1)
+				  AND ($2 = '' OR time >= $2::timestamp)
+				  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
+				  AND ($4 = '' OR (LOWER($4) LIKE '%salt%' AND (alias ILIKE '%mubende%' OR alias ILIKE '%salt%')) OR (LOWER($4) LIKE '%solo%' AND (alias ILIKE '%mutungo%' OR alias ILIKE '%luzira%' OR alias ILIKE '%solo%')) OR (alias ILIKE '%' || $4 || '%'))`
+
+// Energy accounting per plant interval, shared by the analytics + breakdown queries.
+// Devices sharing a save timestamp are summed first (per_time); each interval is then
+// valued at its Time-of-Use tariff. Savings = avoided grid import = load minus grid
+// import (signed: grid-charging intervals count negative), split into the direct-solar
+// portion and the battery residual.
+const intervalEnergyCTE = `
+		per_time AS (
+			SELECT
+				time,
+				SUM(pv_power_w)   AS pv_w,
+				SUM(load_power_w) AS load_w,
+				SUM(grid_power_w) AS grid_w
+			FROM felicity_solar_telemetry
+			WHERE ` + telemetryWhere + `
+			GROUP BY time
+		),
+		enriched AS (
+			SELECT
+				time,
+				GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - LAG(time) OVER (ORDER BY time))) / 3600.0)) AS dt_h,
+				GREATEST(0.0, pv_w)   AS pv,
+				GREATEST(0.0, load_w) AS load,
+				GREATEST(0.0, grid_w) AS grid,
+				CASE
+					WHEN EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= 18 THEN 650.50
+					WHEN EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= 6  THEN 546.00
+					ELSE 414.00
+				END AS tou_rate,
+				(EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= 18) AS is_peak
+			FROM per_time
+		),
+		calc AS (
+			SELECT
+				time, tou_rate, is_peak,
+				(pv   * dt_h / 1000.0) AS solar_kwh,
+				(load * dt_h / 1000.0) AS load_kwh,
+				(grid * dt_h / 1000.0) AS grid_kwh,
+				((load - grid) * dt_h / 1000.0) AS nongrid_kwh,
+				(LEAST(pv, load) * dt_h / 1000.0) AS solar_to_load_kwh
+			FROM enriched
+		),
+		derived AS (
+			SELECT
+				time, tou_rate, is_peak,
+				solar_kwh, load_kwh, grid_kwh, nongrid_kwh, solar_to_load_kwh,
+				nongrid_kwh - solar_to_load_kwh AS battery_kwh
+			FROM calc
+		)`
+
 func (s *Store) GetAnalytics(deviceSN string, plant string, startDate string, endDate string) (SavingsAnalytics, error) {
 	var a SavingsAnalytics
 	if s.db == nil {
@@ -342,62 +407,58 @@ func (s *Store) GetAnalytics(deviceSN string, plant string, startDate string, en
 	}
 
 	query := `
-		SELECT 
-			COALESCE(SUM(solar_kwh), 0.0) as solar_kwh,
-			COALESCE(SUM(load_kwh), 0.0) as load_kwh,
-			COALESCE(SUM(grid_kwh), 0.0) as grid_kwh,
-			COALESCE(SUM(solar_kwh * tou_rate), 0.0) as savings_ugx,
-			COUNT(*) as cnt,
-			COALESCE(MIN(time)::text, '') as earliest,
-			COALESCE(MAX(time)::text, '') as latest
-		FROM (
-			SELECT 
-				time,
-				device_sn,
-				(pv_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0) as solar_kwh,
-				(load_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0) as load_kwh,
-				(grid_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0) as grid_kwh,
-				CASE 
-					WHEN EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= 18 THEN 650.50
-					WHEN EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= 6 THEN 546.00
-					ELSE 414.00
-				END as tou_rate
-			FROM (
-				SELECT 
-					time,
-					device_sn,
-					pv_power_w,
-					load_power_w,
-					grid_power_w,
-					LAG(time) OVER (PARTITION BY device_sn ORDER BY time) as prev_time
-				FROM felicity_solar_telemetry
-				WHERE ($4 != '' OR $1 = '' OR device_sn = $1)
-				  AND ($2 = '' OR time >= $2::timestamp)
-				  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
-				  AND ($4 = '' OR (LOWER($4) LIKE '%salt%' AND (alias ILIKE '%mubende%' OR alias ILIKE '%salt%')) OR (LOWER($4) LIKE '%solo%' AND (alias ILIKE '%mutungo%' OR alias ILIKE '%luzira%' OR alias ILIKE '%solo%')) OR (alias ILIKE '%' || $4 || '%'))
-			) inner_sub
-		) sub
+		WITH ` + intervalEnergyCTE + `
+		SELECT
+			COALESCE(SUM(solar_kwh), 0.0),
+			COALESCE(SUM(load_kwh), 0.0),
+			COALESCE(SUM(grid_kwh), 0.0),
+			COALESCE(SUM(solar_to_load_kwh), 0.0),
+			COALESCE(SUM(battery_kwh), 0.0),
+			COALESCE(SUM(nongrid_kwh), 0.0),
+			COALESCE(SUM(solar_to_load_kwh * tou_rate), 0.0),
+			COALESCE(SUM(battery_kwh * tou_rate), 0.0),
+			COALESCE(SUM(CASE WHEN is_peak THEN nongrid_kwh * tou_rate ELSE 0.0 END), 0.0),
+			COALESCE(SUM(CASE WHEN NOT is_peak THEN nongrid_kwh * tou_rate ELSE 0.0 END), 0.0),
+			COALESCE(SUM(grid_kwh * tou_rate), 0.0),
+			(SELECT COUNT(*) FROM felicity_solar_telemetry WHERE ` + telemetryWhere + `),
+			COALESCE(MIN(time)::text, ''),
+			COALESCE(MAX(time)::text, '')
+		FROM derived
 	`
 
 	row := s.db.QueryRow(query, deviceSN, startDate, endDate, plant)
-	err := row.Scan(&a.TotalSolarKWh, &a.TotalLoadKWh, &a.TotalGridKWh, &a.TotalSavingsUGX, &a.RecordCount, &a.EarliestRecord, &a.LatestRecord)
+	err := row.Scan(
+		&a.TotalSolarKWh, &a.TotalLoadKWh, &a.TotalGridKWh,
+		&a.SelfConsumedKWh, &a.BatteryUsedKWh, &a.AvoidedImportKWh,
+		&a.SolarSavingsUGX, &a.BatterySavingsUGX,
+		&a.PeakSavingsUGX, &a.OffPeakSavingsUGX, &a.GridCostUGX,
+		&a.RecordCount, &a.EarliestRecord, &a.LatestRecord,
+	)
 	if err != nil {
 		return a, err
 	}
 
+	const UGXToUSD = 3700.0
+
 	a.TotalSolarKWh = math.Round(a.TotalSolarKWh*100) / 100
 	a.TotalLoadKWh = math.Round(a.TotalLoadKWh*100) / 100
 	a.TotalGridKWh = math.Round(a.TotalGridKWh*100) / 100
+	a.SelfConsumedKWh = math.Round(a.SelfConsumedKWh*100) / 100
+	a.BatteryUsedKWh = math.Round(a.BatteryUsedKWh*100) / 100
+	a.AvoidedImportKWh = math.Round(a.AvoidedImportKWh*100) / 100
+	a.SolarSavingsUGX = math.Round(a.SolarSavingsUGX)
+	a.BatterySavingsUGX = math.Round(a.BatterySavingsUGX)
+	a.PeakSavingsUGX = math.Round(a.PeakSavingsUGX)
+	a.OffPeakSavingsUGX = math.Round(a.OffPeakSavingsUGX)
+	a.GridCostUGX = math.Round(a.GridCostUGX)
 
-	const UGXToUSD = 3700.0
-
-	a.TotalSavingsUGX = math.Round(a.TotalSavingsUGX)
-	a.TotalSavingsUSD = math.Round((a.TotalSavingsUGX / UGXToUSD) * 100) / 100
+	// Headline = avoided grid import (direct solar + battery discharge) valued at
+	// the hour it was consumed. Grid cost is reported separately as the actual bill.
+	a.TotalSavingsUGX = math.Round(a.SolarSavingsUGX + a.BatterySavingsUGX)
+	a.TotalSavingsUSD = math.Round((a.TotalSavingsUGX/UGXToUSD)*100) / 100
 
 	if a.TotalLoadKWh > 0 {
-		nonGridLoadKWh := math.Max(0.0, a.TotalLoadKWh-a.TotalGridKWh)
-		solarContribKWh := math.Min(a.TotalSolarKWh, nonGridLoadKWh)
-		a.SolarSelfSuffPct = math.Max(0.0, math.Min(100.0, math.Round((solarContribKWh/a.TotalLoadKWh)*1000)/10))
+		a.SolarSelfSuffPct = math.Max(0.0, math.Min(100.0, math.Round((a.SelfConsumedKWh/a.TotalLoadKWh)*1000)/10))
 	} else {
 		a.SolarSelfSuffPct = 0.0
 	}
@@ -436,45 +497,25 @@ func (s *Store) GetPeriodBreakdown(deviceSN string, plant string, period string,
 		limitVal = 100
 	}
 
-	query := fmt.Sprintf(`
-		SELECT 
+	query := `
+		WITH ` + intervalEnergyCTE + `,
+		bucketed AS (
+			SELECT *, to_char(time_bucket('` + bucketInterval + `', time), '` + formatStr + `') AS period_label
+			FROM derived
+		)
+		SELECT
 			period_label,
-			COALESCE(SUM(solar_kwh), 0.0) as solar_kwh,
-			COALESCE(SUM(load_kwh), 0.0) as load_kwh,
-			COALESCE(SUM(grid_kwh), 0.0) as grid_kwh,
-			COALESCE(SUM(solar_kwh * tou_rate), 0.0) as savings_ugx
-		FROM (
-			SELECT 
-				time,
-				device_sn,
-				to_char(time_bucket('%s', time), '%s') AS period_label,
-				(pv_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0) as solar_kwh,
-				(load_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0) as load_kwh,
-				(grid_power_w * GREATEST(0.0, LEAST(0.25, EXTRACT(EPOCH FROM (time - prev_time)) / 3600.0)) / 1000.0) as grid_kwh,
-				CASE 
-					WHEN EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= 18 THEN 650.50
-					WHEN EXTRACT(HOUR FROM (time AT TIME ZONE 'UTC' AT TIME ZONE 'EAT')) >= 6 THEN 546.00
-					ELSE 414.00
-				END as tou_rate
-			FROM (
-				SELECT 
-					time,
-					device_sn,
-					pv_power_w,
-					load_power_w,
-					grid_power_w,
-					LAG(time) OVER (PARTITION BY device_sn ORDER BY time) as prev_time
-				FROM felicity_solar_telemetry
-				WHERE ($4 != '' OR $1 = '' OR device_sn = $1)
-				  AND ($2 = '' OR time >= $2::timestamp)
-				  AND ($3 = '' OR time <= ($3::timestamp + INTERVAL '1 day'))
-				  AND ($4 = '' OR (LOWER($4) LIKE '%%salt%%' AND (alias ILIKE '%%mubende%%' OR alias ILIKE '%%salt%%')) OR (LOWER($4) LIKE '%%solo%%' AND (alias ILIKE '%%mutungo%%' OR alias ILIKE '%%luzira%%' OR alias ILIKE '%%solo%%')) OR (alias ILIKE '%%' || $4 || '%%'))
-			) inner_sub
-		) sub
+			COALESCE(SUM(solar_kwh), 0.0),
+			COALESCE(SUM(load_kwh), 0.0),
+			COALESCE(SUM(grid_kwh), 0.0),
+			COALESCE(SUM(solar_to_load_kwh * tou_rate) + SUM(battery_kwh * tou_rate), 0.0) AS savings_ugx,
+			COALESCE(SUM(solar_to_load_kwh), 0.0),
+			COALESCE(SUM(battery_kwh), 0.0),
+			COALESCE(SUM(grid_kwh * tou_rate), 0.0)
+		FROM bucketed
 		GROUP BY period_label
 		ORDER BY period_label DESC
-		LIMIT %d
-	`, bucketInterval, formatStr, limitVal)
+		LIMIT ` + strconv.Itoa(limitVal)
 
 	rows, err := s.db.Query(query, deviceSN, startDate, endDate, plant)
 	if err != nil {
@@ -486,12 +527,15 @@ func (s *Store) GetPeriodBreakdown(deviceSN string, plant string, period string,
 
 	for rows.Next() {
 		var item felicity.PeriodItem
-		if err := rows.Scan(&item.PeriodLabel, &item.SolarKWh, &item.LoadKWh, &item.GridKWh, &item.SavingsUGX); err == nil {
+		if err := rows.Scan(&item.PeriodLabel, &item.SolarKWh, &item.LoadKWh, &item.GridKWh, &item.SavingsUGX, &item.SelfConsumedKWh, &item.BatteryUsedKWh, &item.GridCostUGX); err == nil {
 			item.SolarKWh = math.Round(item.SolarKWh*100) / 100
 			item.LoadKWh = math.Round(item.LoadKWh*100) / 100
 			item.GridKWh = math.Round(item.GridKWh*100) / 100
+			item.SelfConsumedKWh = math.Round(item.SelfConsumedKWh*100) / 100
+			item.BatteryUsedKWh = math.Round(item.BatteryUsedKWh*100) / 100
+			item.GridCostUGX = math.Round(item.GridCostUGX)
 			item.SavingsUGX = math.Round(item.SavingsUGX)
-			item.SavingsUSD = math.Round((item.SavingsUGX / UGXToUSD) * 100) / 100
+			item.SavingsUSD = math.Round((item.SavingsUGX/UGXToUSD)*100) / 100
 			resp.Items = append(resp.Items, item)
 		}
 	}
