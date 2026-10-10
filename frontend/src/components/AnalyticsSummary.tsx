@@ -51,7 +51,7 @@ export const AnalyticsSummary: React.FC<AnalyticsSummaryProps> = ({
   const loadKWh = analytics?.total_load_kwh.toFixed(2) || '0.00';
   const savingsUGX = analytics?.total_savings_ugx.toLocaleString() || '0';
   const savingsUSD = analytics?.total_savings_usd.toFixed(2) || '0.00';
-  const selfSuff = analytics?.solar_self_sufficiency_pct || 100;
+  const selfSuff = analytics?.solar_self_sufficiency_pct ?? 0;
   const records = analytics?.total_records_synced || 0;
 
   const formatDateStr = (str: string) => {
@@ -140,7 +140,7 @@ export const AnalyticsSummary: React.FC<AnalyticsSummaryProps> = ({
           className="glass-card p-5 space-y-3 border-l-4 border-l-cyan-500 cursor-pointer hover:border-cyan-400 hover:bg-white/5 transition group"
         >
           <div className="flex justify-between items-start">
-            <span className="text-xs font-semibold text-gray-400 group-hover:text-cyan-300 transition">Solar Self-Sufficiency</span>
+            <span className="text-xs font-semibold text-gray-400 group-hover:text-cyan-300 transition">Self-Sufficiency</span>
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/20">
               Off-Grid Independence
             </span>

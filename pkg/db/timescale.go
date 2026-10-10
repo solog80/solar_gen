@@ -598,8 +598,10 @@ func (s *Store) GetAnalytics(deviceSN string, plant string, startDate string, en
 	// the hour it was consumed. Grid cost is reported separately as the actual bill.
 	a.TotalSavingsUGX = math.Round(a.SolarSavingsUGX + a.BatterySavingsUGX)
 
+	// Self-sufficiency = grid independence: the fraction of load NOT imported from
+	// the grid (direct solar + battery discharge, i.e. avoided import).
 	if a.TotalLoadKWh > 0 {
-		a.SolarSelfSuffPct = math.Max(0.0, math.Min(100.0, math.Round((a.SelfConsumedKWh/a.TotalLoadKWh)*1000)/10))
+		a.SolarSelfSuffPct = math.Max(0.0, math.Min(100.0, math.Round((a.AvoidedImportKWh/a.TotalLoadKWh)*1000)/10))
 	} else {
 		a.SolarSelfSuffPct = 0.0
 	}
